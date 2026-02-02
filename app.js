@@ -129,7 +129,8 @@ function calcular(){
   const financiarSub = round2(financiarIncl / (1 + inp.ivaRate));
 
   // Tasa periodo por base 360: (tasaAnual/360) * diasPeriodo
-  const rate = round2((inp.tasaAnual / 360) * inp.diasPeriodo);
+  const rate = (inp.tasaAnual / 360) * inp.diasPeriodo;
+
 
   // Pago por periodo (sin IVA)
   let pagoSub = pmt(rate, inp.meses, financiarSub);
