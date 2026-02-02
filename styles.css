@@ -78,6 +78,26 @@ input, select{
   outline:none;
 }
 
+/* Asegura que el input de fecha no se salga en móvil */
+input[type="date"]{
+  width: 100%;
+  max-width: 100%;
+  display: block;
+  padding: 12px 12px;      /* igual que los demás */
+  font-size: 16px;         /* igual que los demás */
+  height: 46px;            /* fija alto para que sea consistente */
+  line-height: 22px;
+  box-sizing: border-box;
+}
+
+/* iOS: evita que el control interno empuje el ancho */
+input[type="date"]::-webkit-datetime-edit,
+input[type="date"]::-webkit-datetime-edit-fields-wrapper{
+  padding: 0;
+  margin: 0;
+}
+
+
 input:focus, select:focus{ border-color: rgba(47,128,237,0.65); box-shadow: 0 0 0 3px rgba(47,128,237,0.18); }
 
 .actions{ display:flex; gap:10px; margin-top:12px; flex-wrap:wrap; }
