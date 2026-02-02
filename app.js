@@ -355,8 +355,23 @@ if (logoDataUrl){
 
   const safeCliente = (lastResult.cliente || 'cliente').replace(/[^\w\- ]+/g,'').trim().replace(/\s+/g,'_');
   const fname = `Corrida_${safeCliente}_${new Date().toISOString().slice(0,10)}.pdf`;
-  doc.save(fname);
-}
+  
+  // Abrir en otra pestaña para previsualizar (sin forzar descarga)
+  const pdfBlob = doc.output('blob');
+  const pdfUrl = URL.createObjectURL(pdfBlob);
+  
+  // Importante: abrir desde el click del botón (ya lo estás haciendo) para que no bloquee el popup
+  const win = window.open(pdfUrl, '_blank');
+  
+  if (!win) {
+    // Si el navegador bloqueó la nueva pestaña, abre en la misma pestaña
+    window.location.href = pdfUrl;
+  }
+  
+  // Limpieza de memoria (opcional)
+  setTimeout(() => URL.revokeObjectURL(pdfUrl), 60_000);
+  
+  }
 
 /* ===== PWA ===== */
 if ('serviceWorker' in navigator){
