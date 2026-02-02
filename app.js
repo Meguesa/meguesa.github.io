@@ -303,26 +303,36 @@ if (logoDataUrl){
 
   y += 42;
 
-  const ivaModoTxt = lastResult.ivaModo === 'interes'
+  const ivaModoTxt = (lastResult.ivaModo === 'interes')
     ? 'IVA sobre interés'
     : 'IVA sobre (capital + interés)';
 
-  const lines = [
-    `Cliente: ${cliente}`,
-    `Monto total (con IVA): ${fmtMXN(lastResult.total)}`,
-    `Enganche: ${fmtMXN(lastResult.engancheIncl)} (${fmtPct(lastResult.enganchePctReal*100)})`,
-    `Monto a financiar (con IVA): ${fmtMXN(lastResult.financiarIncl)}`,
-    `Monto a financiar (sin IVA): ${fmtMXN(lastResult.financiarSub)}`,
-    `Tasa anual: ${fmtPct(lastResult.tasaAnual*100)}  ·  Días/periodo: ${lastResult.diasPeriodo} (base 360)`,
-    `Meses: ${lastResult.meses}  ·  Primer pago: ${formatDateHuman(lastResult.primerPago)}`,
-    `IVA: ${fmtPct(lastResult.ivaRate*100)}  ·  Modo: ${ivaModoTxt}`,
-    `Mensualidad aprox.: ${fmtMXN(lastResult.mensualidad)}`,
-    `Monto final financiado (suma de pagos): ${fmtMXN(lastResult.totalPagos)}`
+  // --- Detalle (etiquetas en negritas, valores normal) ---
+  const labelX = left;
+  const valueX = left + 190;
+  const lineH = 14;
+
+  const items = [
+    { label: 'Cliente:', value: cliente },
+    { label: 'Monto total (con IVA):', value: fmtMXN(lastResult.total) },
+    { label: 'Enganche:', value: `${fmtMXN(lastResult.engancheIncl)} (${fmtPct(lastResult.enganchePctReal * 100)})` },
+    { label: 'Monto a financiar (con IVA):', value: fmtMXN(lastResult.financiarIncl) },
+    { label: 'Monto a financiar (sin IVA):', value: fmtMXN(lastResult.financiarSub) },
+    { label: 'Tasa anual:', value: `${fmtPct(lastResult.tasaAnual * 100)}  ·  Días/periodo: ${lastResult.diasPeriodo} (base 360)` },
+    { label: 'Meses:', value: `${lastResult.meses}  ·  Primer pago: ${formatDateHuman(lastResult.primerPago)}` },
+    { label: 'IVA:', value: `${fmtPct(lastResult.ivaRate * 100)}  ·  Modo: ${ivaModoTxt}` },
+    { label: 'Mensualidad aprox.:', value: fmtMXN(lastResult.mensualidad) },
+    { label: 'Monto final financiado (suma de pagos):', value: fmtMXN(lastResult.totalPagos) }
   ];
 
-  for (const ln of lines){
-    doc.text(ln, left, y);
-    y += 14;
+  for (const it of items) {
+    doc.setFont('helvetica', 'bold');
+    doc.text(it.label, labelX, y);
+
+    doc.setFont('helvetica', 'normal');
+    doc.text(String(it.value ?? '—'), valueX, y);
+
+    y += lineH;
   }
 
   y += 8;
