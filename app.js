@@ -280,12 +280,12 @@ if (logoDataUrl){
   const logoH = 36;      // alto en puntos (ajusta)
   const x = pageWidth - 40 - logoW; // margen derecho 40
   const yLogo = 28;
-  doc.addImage(logoDataUrl, 'PNG', x, yLogo, logoW, logoH);
+  doc.addImage(logoDataUrl, 'JPEG', x, yLogo, logoW, logoH);
 }
 
 
   const company = 'Jardines de Juan Pablo'; // cámbialo si quieres
-  const titulo = 'CORRIDA DE FINANCIAMIENTO';
+  const titulo = 'VENTA CON FINANCIAMIENTO';
   const cliente = lastResult.cliente || '—';
 
   const left = 40;
