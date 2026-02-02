@@ -268,7 +268,7 @@ async function generarPDF(){
   // Logo (arriba derecha)
 let logoDataUrl = null;
 try{
-  logoDataUrl = await loadImageAsDataURL('./assets/logo.png');
+  logoDataUrl = await loadImageAsDataURL('/assets/logo.jpg');
 }catch(e){
   // Si falla, no detiene el PDF; solo lo genera sin logo
   logoDataUrl = null;
