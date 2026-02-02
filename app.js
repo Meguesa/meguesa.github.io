@@ -309,7 +309,7 @@ if (logoDataUrl){
 
   // --- Detalle (etiquetas en negritas, valores normal) ---
   const labelX = left;
-  const valueX = left + 100;
+  const valueX = left + 150;
   const lineH = 14;
 
   const items = [
