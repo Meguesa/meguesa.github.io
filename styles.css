@@ -28,7 +28,7 @@ html,body{ margin:0; padding:0; background:var(--bg); color:var(--text); font-fa
 }
 
 .header-logo{
-  height:200px;
+  height:100px;
   width:auto;
   justify-self:center;
   object-fit:contain;
