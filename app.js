@@ -171,7 +171,7 @@ function calcular(){
       saldoFinal
     });
 
-    totalPagos = round2(totalPagos + pagoTotal);
+    const totalPagos = round2(mensualidad * inp.meses);
     saldo = saldoFinal;
   }
 
