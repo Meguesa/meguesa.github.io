@@ -276,8 +276,8 @@ try{
 
 const pageWidth = doc.internal.pageSize.getWidth();
 if (logoDataUrl){
-  const logoW = 400;     // ancho en puntos (ajusta)
-  const logoH = 255;      // alto en puntos (ajusta)
+  const logoW = 200;     // ancho en puntos (ajusta)
+  const logoH = 132;      // alto en puntos (ajusta)
   const x = pageWidth - 40 - logoW; // margen derecho 40
   const yLogo = 28;
   doc.addImage(logoDataUrl, 'JPEG', x, yLogo, logoW, logoH);
