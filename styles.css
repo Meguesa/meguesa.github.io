@@ -66,36 +66,37 @@ html,body{ margin:0; padding:0; background:var(--bg); color:var(--text); font-fa
 .field{ display:flex; flex-direction:column; gap:6px; }
 .field span{ font-size:13px; color:var(--muted); }
 .field small{ color:var(--muted); font-size:11px; line-height:1.2; }
+.field{ min-width:0; }
 
-
+/* Controles (inputs/selects) con tamaño uniforme */
 input, select{
   width:100%;
+  max-width:100%;
   background:#ffffff;
   color:var(--text);
   border:1px solid var(--line);
   border-radius:12px;
-  padding:12px 12px;
-  font-size:16px;
+  height:52px;          /* << tamaño uniforme */
+  padding:0 12px;       /* << evita que iOS “infle” el date */
+  font-size:16px;       /* mismo estilo */
   outline:none;
+  box-sizing:border-box;
 }
 
-/* Asegura que el input de fecha no se salga en móvil */
+/* Select: un poco de espacio para la flecha */
+select{ padding-right: 40px; }
+
+/* iOS Safari: forzar que el date se vea igual que los demás */
 input[type="date"]{
-  width: 100%;
-  max-width: 100%;
-  display: block;
-  padding: 12px 12px;      /* igual que los demás */
-  font-size: 16px;         /* igual que los demás */
-  height: 46px;            /* fija alto para que sea consistente */
-  line-height: 22px;
-  box-sizing: border-box;
+  -webkit-appearance:none;
+  appearance:none;
+  display:block;
 }
 
-/* iOS: evita que el control interno empuje el ancho */
-input[type="date"]::-webkit-datetime-edit,
-input[type="date"]::-webkit-datetime-edit-fields-wrapper{
-  padding: 0;
-  margin: 0;
+/* Alinea el texto del date en iOS */
+input[type="date"]::-webkit-date-and-time-value{
+  text-align:left;
+  line-height:52px;   /* igual a la altura del control */
 }
 
 
