@@ -66,6 +66,10 @@ html,body{ margin:0; padding:0; background:var(--bg); color:var(--text); font-fa
 .field{ display:flex; flex-direction:column; gap:6px; }
 .field span{ font-size:13px; color:var(--muted); }
 .field small{ color:var(--muted); font-size:11px; line-height:1.2; }
+.field{
+  min-width: 0;
+}
+
 
 input, select{
   width:100%;
