@@ -247,12 +247,42 @@ function limpiar(){
   lastResult = null;
 }
 
+async function loadImageAsDataURL(url){
+  const resp = await fetch(url, { cache: 'no-cache' });
+  if (!resp.ok) throw new Error('No se pudo cargar el logo');
+  const blob = await resp.blob();
+  return await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = reject;
+    reader.readAsDataURL(blob);
+  });
+}
+
 /* ===== PDF ===== */
-function generarPDF(){
+async function generarPDF(){
   if (!lastResult) return;
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'letter' });
+  // Logo (arriba derecha)
+let logoDataUrl = null;
+try{
+  logoDataUrl = await loadImageAsDataURL('./assets/logo.png');
+}catch(e){
+  // Si falla, no detiene el PDF; solo lo genera sin logo
+  logoDataUrl = null;
+}
+
+const pageWidth = doc.internal.pageSize.getWidth();
+if (logoDataUrl){
+  const logoW = 110;     // ancho en puntos (ajusta)
+  const logoH = 36;      // alto en puntos (ajusta)
+  const x = pageWidth - 40 - logoW; // margen derecho 40
+  const yLogo = 28;
+  doc.addImage(logoDataUrl, 'PNG', x, yLogo, logoW, logoH);
+}
+
 
   const company = 'Jardines de Juan Pablo'; // cámbialo si quieres
   const titulo = 'CORRIDA DE FINANCIAMIENTO';
