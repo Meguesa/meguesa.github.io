@@ -320,41 +320,10 @@ if (logoDataUrl){
     `Monto final financiado (suma de pagos): ${fmtMXN(lastResult.totalPagos)}`
   ];
 
-// --- Detalle (etiquetas en negritas) ---
-const labelX = left;
-const valueX = left + 165;   // ancho reservado para la etiqueta (ajústalo si quieres)
-const lineH  = 14;
-
-const ivaModoTxt = lastResult.ivaModo === 'interes'
-  ? 'IVA sobre interés'
-  : 'IVA sobre (capital + interés)';
-
-const items = [
-  { label: 'Cliente:', value: cliente },
-  { label: 'Monto total (con IVA):', value: fmtMXN(lastResult.total) },
-  { label: 'Enganche:', value: `${fmtMXN(lastResult.engancheIncl)} (${fmtPct(lastResult.enganchePctReal*100)})` },
-  { label: 'Monto a financiar (con IVA):', value: fmtMXN(lastResult.financiarIncl) },
-  { label: 'Monto a financiar (sin IVA):', value: fmtMXN(lastResult.financiarSub) },
-  { label: 'Tasa anual:', value: `${fmtPct(lastResult.tasaAnual*100)}  ·  Días/periodo: ${lastResult.diasPeriodo} (base 360)` },
-  { label: 'Meses:', value: `${lastResult.meses}  ·  Primer pago: ${formatDateHuman(lastResult.primerPago)}` },
-  { label: 'IVA:', value: `${fmtPct(lastResult.ivaRate*100)}  ·  Modo: ${ivaModoTxt}` },
-  { label: 'Mensualidad aprox.:', value: fmtMXN(lastResult.mensualidad) },
-  { label: 'Monto final financiado:', value: fmtMXN(lastResult.totalPagos) }
-];
-
-// Dibuja cada renglón con etiqueta bold y valor normal
-for (const it of items){
-  doc.setFont('helvetica', 'bold');
-  doc.text(it.label, labelX, y);
-
-  doc.setFont('helvetica', 'normal');
-  doc.text(String(it.value ?? '—'), valueX, y);
-
-  y += lineH;
-}
-
-y += 8; // separación antes de la tabla
-
+  for (const ln of lines){
+    doc.text(ln, left, y);
+    y += 14;
+  }
 
   y += 8;
 
