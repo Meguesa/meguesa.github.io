@@ -309,15 +309,15 @@ if (logoDataUrl){
 
   // --- Detalle (etiquetas en negritas, valores normal) ---
   const labelX = left;
-  const valueX = left + 190;
+  const valueX = left + 100;
   const lineH = 14;
 
   const items = [
     { label: 'Cliente:', value: cliente },
     { label: 'Monto total (con IVA):', value: fmtMXN(lastResult.total) },
     { label: 'Enganche:', value: `${fmtMXN(lastResult.engancheIncl)} (${fmtPct(lastResult.enganchePctReal * 100)})` },
-    { label: 'Monto a financiar (con IVA):  ', value: fmtMXN(lastResult.financiarIncl) },
-    { label: 'Monto a financiar (sin IVA):  ', value: fmtMXN(lastResult.financiarSub) },
+    { label: 'Monto a financiar (con IVA):', value: fmtMXN(lastResult.financiarIncl) },
+    { label: 'Monto a financiar (sin IVA):', value: fmtMXN(lastResult.financiarSub) },
     { label: 'Tasa anual:', value: `${fmtPct(lastResult.tasaAnual * 100)}  ·  Días/periodo: ${lastResult.diasPeriodo} (base 360)` },
     { label: 'Meses:', value: `${lastResult.meses}  ·  Primer pago: ${formatDateHuman(lastResult.primerPago)}` },
     { label: 'IVA:', value: `${fmtPct(lastResult.ivaRate * 100)}  ·  Modo: ${ivaModoTxt}` },
