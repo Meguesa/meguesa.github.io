@@ -196,7 +196,7 @@ tbody tr:hover{ background:#f7f7f7; }
   line-height: 1;
 }
 
-.accordion-header[aria-expanded="true"] .chev{
+.accordion-header[aria-expanded="false"] .chev{
   transform: rotate(180deg);
 }
 
@@ -204,3 +204,10 @@ tbody tr:hover{ background:#f7f7f7; }
   margin-top: 12px;
 }
 
+.accordion-panel[hidden]{
+  display: none !important;
+}
+
+.accordion-header .acc-title{
+  font-weight: 700;
+}
