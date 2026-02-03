@@ -562,7 +562,8 @@ async function generarPDF(){
   }
 
   const company = 'Jardines de Juan Pablo';
-  const titulo = (lastResult.mode === 'abono') ? 'ABONO A CAPITAL (SIMULACIÓN)' : 'VENTA CON FINANCIAMIENTO';
+  const titulo = 'VENTA CON FINANCIAMIENTO';
+  const subtitulo = (lastResult.mode === 'abono') ? 'Simulación de Abono a Capital' : '';
   const cliente = lastResult.cliente || '—';
   const producto = lastResult.producto || '—';
 
@@ -575,18 +576,16 @@ async function generarPDF(){
 
   doc.setFontSize(12);
   doc.text(titulo, left, y + 18);
-
-  // Producto debajo del título (lo que pediste)
-  doc.setFontSize(10);
-  doc.setFont('helvetica','bold');
-  doc.text('Producto:', left, y + 34);
-  doc.setFont('helvetica','normal');
-  doc.text(String(producto), left + 70, y + 34);
+  if (subtitulo){
+    doc.setFont('helvetica','bold');
+    doc.setFontSize(10);
+    doc.text(subtitulo, left, y + 32);
+  }
 
   doc.setFont('helvetica','normal');
   doc.setFontSize(10);
 
-  y += 56;
+  y += (subtitulo ? 56 : 42);
 
   const ivaModoTxt = (lastResult.ivaModo === 'interes')
     ? 'IVA sobre interés'
@@ -597,6 +596,7 @@ async function generarPDF(){
   const lineH = 14;
 
   const items = [
+    { label: 'Producto:', value: producto },
     { label: 'Cliente:', value: cliente },
     { label: 'Monto a financiar (con IVA):', value: fmtMXN(lastResult.financiarIncl) },
     { label: 'Monto a financiar (sin IVA):', value: fmtMXN(lastResult.financiarSub) },
