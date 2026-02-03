@@ -115,15 +115,15 @@ let lastResult = null;
   // Acordeón: Sección 2 (por default cerrada)
   if (ui.togglePagos && ui.panelPagos){
     ui.togglePagos.addEventListener('click', () => {
-      const isOpen = ui.togglePagos.getAttribute('aria-expanded') === 'false';
+      const isOpen = ui.togglePagos.getAttribute('aria-expanded') === 'true';
       ui.togglePagos.setAttribute('aria-expanded', String(!isOpen));
       ui.panelPagos.hidden = isOpen;
     });
   }
 
   if (ui.togglePagos && ui.panelPagos){
-    ui.togglePagos.setAttribute('aria-expanded', 'true');
-    ui.panelPagos.hidden = false;
+    ui.togglePagos.setAttribute('aria-expanded', 'false');
+    ui.panelPagos.hidden = true;
   }
   
   if (ui.btnCalcularPagos) ui.btnCalcularPagos.addEventListener('click', (e) => { e.preventDefault(); calcularDesdePagos(); });
