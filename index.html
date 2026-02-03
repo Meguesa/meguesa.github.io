@@ -91,7 +91,7 @@
       </div>
     </section>
 
-//CORRIDA DESDE PAGOS
+    <!-- CORRIDA DESDE PAGOS -->
     <section class="card">
       <h2>Recalcular corrida desde pagos</h2>
       <p class="muted">
@@ -99,48 +99,49 @@
       </p>
     
       <div class="grid">
-        <div class="field">
-          <label>Cliente</label>
-          <input id="cliente2" type="text" placeholder="Nombre del cliente">
-        </div>
+        <label class="field">
+          <span>Cliente</span>
+          <input id="cliente2" type="text" placeholder="Nombre del cliente" maxlength="60" />
+        </label>
     
-        <div class="field">
-          <label>Monto a financiar (con IVA)</label>
-          <input id="financiarIncl2" type="number" inputmode="decimal" placeholder="Ej. 92000">
-        </div>
+        <label class="field">
+          <span>Monto a financiar (con IVA)</span>
+          <input id="financiarIncl2" type="number" inputmode="decimal" placeholder="Ej. 92000" min="0" step="0.01" />
+        </label>
     
-        <div class="field">
-          <label>Tasa anual (%)</label>
-          <input id="tasaAnual2" type="number" inputmode="decimal" placeholder="Ej. 20">
-        </div>
+        <label class="field">
+          <span>Tasa anual (%)</span>
+          <input id="tasaAnual2" type="number" inputmode="decimal" placeholder="Ej. 20" min="0" step="0.01" />
+        </label>
     
-        <div class="field">
-          <label>Meses totales</label>
-          <input id="meses2" type="number" inputmode="numeric" placeholder="Ej. 36">
-        </div>
+        <label class="field">
+          <span>Meses totales</span>
+          <input id="meses2" type="number" inputmode="numeric" placeholder="Ej. 36" min="1" max="120" step="1" />
+        </label>
     
-        <div class="field">
-          <label>Primer pago (fecha)</label>
-          <input id="primerPago2" type="date">
-        </div>
+        <label class="field">
+          <span>Primer pago (fecha)</span>
+          <input id="primerPago2" type="date" />
+        </label>
     
-        <div class="field">
-          <label>Cálculo de IVA</label>
+        <label class="field">
+          <span>Cálculo de IVA</span>
           <select id="ivaModo2">
             <option value="total">IVA sobre (capital + interés)</option>
             <option value="interes">IVA solo sobre interés</option>
           </select>
-        </div>
+        </label>
     
-        <div class="field">
-          <label>Número de pagos hechos</label>
-          <input id="pagosHechos2" type="number" inputmode="numeric" placeholder="Ej. 5">
-        </div>
+        <label class="field">
+          <span>Número de pagos hechos</span>
+          <input id="pagosHechos2" type="number" inputmode="numeric" placeholder="Ej. 5" min="0" step="1" />
+        </label>
     
-        <div class="field">
-          <label>Monto pagado acumulado (con IVA)</label>
-          <input id="montoPagado2" type="number" inputmode="decimal" placeholder="Opcional">
-        </div>
+        <label class="field">
+          <span>Monto pagado acumulado (con IVA)</span>
+          <input id="montoPagado2" type="number" inputmode="decimal" placeholder="Opcional" min="0" step="0.01" />
+          <small>Si lo llenas, ajusta diferencia como abono extra (aprox.).</small>
+        </label>
       </div>
     
       <div class="actions">
@@ -148,7 +149,7 @@
       </div>
     </section>
 
-   //RESUMEN 
+    <!-- RESUMEN -->
     <section class="card">
       <h2>Resumen</h2>
       <div class="summary">
