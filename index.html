@@ -34,6 +34,11 @@
         </label>
 
         <label class="field">
+          <span>¨Productos</span>
+          <input id="producto" type="text" placeholder="Ej. Oro, Platino, VIP, etc. " maxlength="60" />
+        </label>
+        
+        <label class="field">
           <span>Monto total del paquete (con IVA)</span>
           <input id="total" type="number" inputmode="decimal" placeholder="Ej. 100000" min="0" step="0.01" />
         </label>
@@ -91,66 +96,35 @@
       </div>
     </section>
 
-    <!-- CORRIDA DESDE PAGOS (ACORDEÓN) -->
+    <!-- ABONO A CAPITAL -->
     <section class="card">
       <button id="togglePagos" class="accordion-header" type="button" aria-expanded="false" aria-controls="panelPagos">
-        <span class="acc-title">Recalcular corrida desde pagos</span>
+        <span class="acc-title">Abono a Capital (simulación)</span>
         <span class="chev" aria-hidden="true">▾</span>
       </button>
     
       <div id="panelPagos" class="accordion-panel" hidden>
         <p class="muted">
-          Usa esta sección solo si ya existen pagos. No afecta la sección de arriba.
+          Simula un <strong>abono extra</strong> en un pago específico (además de la mensualidad).
+          Esto reduce el saldo y normalmente <strong>acorta el plazo</strong>.
         </p>
     
         <div class="grid">
           <label class="field">
-            <span>Cliente</span>
-            <input id="cliente2" type="text" placeholder="Nombre del cliente" maxlength="60" />
+            <span>Número de pago donde se hará el abono</span>
+            <input id="abonoPago" type="number" inputmode="numeric" placeholder="Ej. 5" min="1" step="1" />
+            <small>Ejemplo: 5 = en el 5to pago.</small>
           </label>
     
           <label class="field">
-            <span>Monto a financiar (con IVA)</span>
-            <input id="financiarIncl2" type="number" inputmode="decimal" placeholder="Ej. 92000" min="0" step="0.01" />
-          </label>
-    
-          <label class="field">
-            <span>Tasa anual (%)</span>
-            <input id="tasaAnual2" type="number" inputmode="decimal" placeholder="Ej. 20" min="0" step="0.01" />
-          </label>
-    
-          <label class="field">
-            <span>Meses totales</span>
-            <input id="meses2" type="number" inputmode="numeric" placeholder="Ej. 36" min="1" max="120" step="1" />
-          </label>
-    
-          <label class="field">
-            <span>Primer pago (fecha)</span>
-            <input id="primerPago2" type="date" />
-          </label>
-    
-          <label class="field">
-            <span>Cálculo de IVA</span>
-            <select id="ivaModo2">
-              <option value="total">IVA sobre (capital + interés)</option>
-              <option value="interes">IVA solo sobre interés</option>
-            </select>
-          </label>
-    
-          <label class="field">
-            <span>Número de pagos hechos</span>
-            <input id="pagosHechos2" type="number" inputmode="numeric" placeholder="Ej. 5" min="0" step="1" />
-          </label>
-    
-          <label class="field">
-            <span>Monto pagado acumulado (con IVA)</span>
-            <input id="montoPagado2" type="number" inputmode="decimal" placeholder="Opcional" min="0" step="0.01" />
-            <small>Si lo llenas, ajusta diferencia como abono extra (aprox.).</small>
+            <span>Abono adicional (con IVA)</span>
+            <input id="abonoExtra" type="number" inputmode="decimal" placeholder="Ej. 5000" min="0" step="0.01" />
+            <small>Se suma al pago de ese mes.</small>
           </label>
         </div>
     
         <div class="actions">
-          <button id="btnCalcularPagos" class="btn primary">Calcular desde pagos</button>
+          <button id="btnSimularAbono" class="btn primary">Simular abono a capital</button>
         </div>
       </div>
     </section>
