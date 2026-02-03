@@ -8,9 +8,7 @@ const fmtPct = (n) => `${(n || 0).toFixed(2)}%`;
 function round2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
 
 function parseDateLocal(iso){
-  // iso: 'YYYY-MM-DD'
   const [y, m, d] = iso.split('-').map(Number);
-  // Mediodía local para evitar desfases UTC/DST
   return new Date(y, m - 1, d, 12, 0, 0, 0);
 }
 
@@ -24,7 +22,6 @@ function addMonths(date, months){
   const d = toDateSafe(date);
   const day = d.getDate();
   d.setMonth(d.getMonth() + months);
-  // Ajuste si el mes resultante no tiene ese día
   if (d.getDate() < day) d.setDate(0);
   d.setHours(12,0,0,0);
   return d;
@@ -56,6 +53,7 @@ const $ = (id) => document.getElementById(id);
 const ui = {
   // Sección 1
   cliente: $('cliente'),
+  producto: $('producto'),
   total: $('total'),
   enganchePct: $('enganchePct'),
   engancheMonto: $('engancheMonto'),
@@ -78,31 +76,26 @@ const ui = {
   resMensualidad: $('resMensualidad'),
   resTotalFin: $('resTotalFin'),
 
-  // Sección 2
-  cliente2: $('cliente2'),
-  financiarIncl2: $('financiarIncl2'),
-  tasaAnual2: $('tasaAnual2'),
-  meses2: $('meses2'),
-  primerPago2: $('primerPago2'),
-  ivaModo2: $('ivaModo2'),
-  pagosHechos2: $('pagosHechos2'),
-  montoPagado2: $('montoPagado2'),
-  btnCalcularPagos: $('btnCalcularPagos'),
+  // Acordeón sección 2
   togglePagos: $('togglePagos'),
   panelPagos: $('panelPagos'),
+
+  // Sección 2 (Abono a capital)
+  abonoPago: $('abonoPago'),
+  abonoExtra: $('abonoExtra'),
+  btnSimularAbono: $('btnSimularAbono'),
 };
 
-let lastResult = null;
+let lastResult = null;     // lo que se está mostrando
+let baseResult = null;     // corrida base (sin abono) para simular sobre ella
 
 /* ===== Defaults ===== */
 (function init(){
-  // fecha default: hoy + 30
   const today = new Date();
   const d = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
   d.setDate(d.getDate() + 30);
 
   if (ui.primerPago) ui.primerPago.value = formatDateISO(d);
-  if (ui.primerPago2) ui.primerPago2.value = formatDateISO(d);
 
   // Forzar constantes visibles
   if (ui.ivaPct) ui.ivaPct.value = String(IVA_RATE * 100);
@@ -112,21 +105,19 @@ let lastResult = null;
   if (ui.btnLimpiar) ui.btnLimpiar.addEventListener('click', (e) => { e.preventDefault(); limpiar(); });
   if (ui.btnPDF) ui.btnPDF.addEventListener('click', (e) => { e.preventDefault(); generarPDF(); });
 
-  // Acordeón: Sección 2 (por default cerrada)
+  if (ui.btnSimularAbono) ui.btnSimularAbono.addEventListener('click', (e) => { e.preventDefault(); simularAbonoCapital(); });
+
+  // Acordeón: forzar cerrado al iniciar
   if (ui.togglePagos && ui.panelPagos){
+    ui.togglePagos.setAttribute('aria-expanded', 'false');
+    ui.panelPagos.hidden = true;
+
     ui.togglePagos.addEventListener('click', () => {
       const isOpen = ui.togglePagos.getAttribute('aria-expanded') === 'true';
       ui.togglePagos.setAttribute('aria-expanded', String(!isOpen));
       ui.panelPagos.hidden = isOpen;
     });
   }
-
-  if (ui.togglePagos && ui.panelPagos){
-    ui.togglePagos.setAttribute('aria-expanded', 'false');
-    ui.panelPagos.hidden = true;
-  }
-  
-  if (ui.btnCalcularPagos) ui.btnCalcularPagos.addEventListener('click', (e) => { e.preventDefault(); calcularDesdePagos(); });
 })();
 
 /* ===== Core (Sección 1) ===== */
@@ -137,12 +128,23 @@ function getInputs(){
   const tasaAnual = Number(ui.tasaAnual?.value || 0) / 100;
   const meses = parseInt(ui.meses?.value || '0', 10);
   const primerPago = ui.primerPago?.value ? parseDateLocal(ui.primerPago.value) : new Date();
-  const ivaModo = ui.ivaModo?.value || 'total'; // total | interes
-  const ivaRate = IVA_RATE;         // fijo
-  const diasPeriodo = DIAS_PERIODO; // fijo
+  const ivaModo = ui.ivaModo?.value || 'total';
   const cliente = (ui.cliente?.value || '').trim();
+  const producto = (ui.producto?.value || '').trim();
 
-  return { total, engPct, engMonto, tasaAnual, meses, primerPago, ivaRate, ivaModo, diasPeriodo, cliente };
+  return {
+    cliente,
+    producto,
+    total,
+    engPct,
+    engMonto,
+    tasaAnual,
+    meses,
+    primerPago,
+    ivaRate: IVA_RATE,
+    ivaModo,
+    diasPeriodo: DIAS_PERIODO
+  };
 }
 
 function validar(inp){
@@ -155,20 +157,46 @@ function validar(inp){
   return errs;
 }
 
+function buildScheduleBase({ pvSub, rate, meses, primerPago, ivaRate, ivaModo, pagoSub }){
+  let saldo = pvSub;
+  const rows = [];
+  let totalPagos = 0;
+
+  for (let k = 1; k <= meses; k++){
+    const fecha = addMonths(primerPago, k - 1);
+
+    let interes = round2(saldo * rate);
+    let capital = round2(pagoSub - interes);
+
+    let saldoFinal = round2(saldo - capital);
+
+    if (k === meses){
+      capital = round2(capital + saldoFinal);
+      saldoFinal = 0;
+    }
+
+    const baseIVA = (ivaModo === 'interes') ? interes : (capital + interes);
+    const ivaPago = round2(baseIVA * ivaRate);
+    const pagoTotal = round2(capital + interes + ivaPago);
+
+    rows.push({ n:k, fecha, saldoInicial:saldo, capital, interes, iva:ivaPago, pago:pagoTotal, saldoFinal });
+
+    totalPagos = round2(totalPagos + pagoTotal);
+    saldo = saldoFinal;
+  }
+
+  return { rows, totalPagos };
+}
+
 function calcular(){
   const inp = getInputs();
   const errs = validar(inp);
-  if (errs.length){
-    alert(errs.join('\n'));
-    return;
-  }
+  if (errs.length){ alert(errs.join('\n')); return; }
 
-  // Enganche: si hay monto, manda. Si no, usa porcentaje
   let engancheIncl = inp.engMonto > 0 ? inp.engMonto : inp.total * inp.engPct;
   engancheIncl = Math.min(engancheIncl, inp.total);
   engancheIncl = round2(engancheIncl);
 
-  // Recalcular % enganche para alinear visualmente
   const enganchePctReal = inp.total > 0 ? (engancheIncl / inp.total) : 0;
   if (ui.enganchePct) ui.enganchePct.value = (enganchePctReal * 100).toFixed(2);
 
@@ -178,15 +206,12 @@ function calcular(){
   const financiarIncl = round2(inp.total - engancheIncl);
   const financiarSub = round2(financiarIncl / (1 + inp.ivaRate));
 
-  // Tasa periodo por base 360: (tasaAnual/360) * diasPeriodo
   const rate = (inp.tasaAnual / 360) * inp.diasPeriodo;
 
-  // Pago por periodo (sin IVA)
   let pagoSub = pmt(rate, inp.meses, financiarSub);
   pagoSub = round2(pagoSub);
 
-  // Armado de corrida
-  const { rows, totalPagos } = buildSchedule({
+  const { rows, totalPagos } = buildScheduleBase({
     pvSub: financiarSub,
     rate,
     meses: inp.meses,
@@ -201,6 +226,8 @@ function calcular(){
   lastResult = {
     mode: 'nueva',
     ...inp,
+    mesesOriginal: inp.meses,
+
     engancheIncl,
     enganchePctReal,
     subtotalTotal,
@@ -214,67 +241,65 @@ function calcular(){
     rows
   };
 
+  // Guardamos la corrida base para simulaciones de abono
+  baseResult = lastResult;
+
   render(lastResult);
 }
 
-/* ===== Sección 2 (Cálculo desde pagos) ===== */
-function getInputsPagos(){
-  const financiarIncl = Number(ui.financiarIncl2?.value || 0);
-  const tasaAnual = Number(ui.tasaAnual2?.value || 0) / 100;
-  const meses = parseInt(ui.meses2?.value || '0', 10);
-  const primerPago = ui.primerPago2?.value ? parseDateLocal(ui.primerPago2.value) : new Date();
-  const ivaModo = ui.ivaModo2?.value || 'total';
-  const pagosHechos = parseInt(ui.pagosHechos2?.value || '0', 10);
-  const montoPagado = Number(ui.montoPagado2?.value || 0);
-  const cliente = (ui.cliente2?.value || '').trim();
+/* ===== Sección 2: Abono a capital (simulación) ===== */
+function simularAbonoCapital(){
+  if (!baseResult){
+    alert('Primero calcula una corrida en la sección "Datos".');
+    return;
+  }
 
-  return {
-    cliente,
-    financiarIncl,
-    tasaAnual,
-    meses,
-    primerPago,
-    ivaModo,
-    pagosHechos,
-    montoPagado,
-    ivaRate: IVA_RATE,
-    diasPeriodo: DIAS_PERIODO
-  };
-}
+  const pagoN = parseInt(ui.abonoPago?.value || '0', 10);
+  const extraTotal = Number(ui.abonoExtra?.value || 0);
 
-function validarPagos(inp){
+  const mesesBase = baseResult.mesesOriginal || baseResult.meses;
+
   const errs = [];
-  if (!(inp.financiarIncl > 0)) errs.push('Captura un Monto a financiar (con IVA) mayor a 0.');
-  if (!(inp.meses > 0)) errs.push('Captura meses totales (mayor a 0).');
-  if (inp.tasaAnual < 0) errs.push('Tasa anual inválida.');
-  if (inp.pagosHechos < 0) errs.push('Pagos hechos inválido.');
-  if (inp.pagosHechos > inp.meses) errs.push('Pagos hechos no puede ser mayor a meses totales.');
-  if (inp.montoPagado < 0) errs.push('Monto pagado inválido.');
-  return errs;
-}
+  if (!(pagoN >= 1 && pagoN <= mesesBase)) errs.push(`El número de pago debe estar entre 1 y ${mesesBase}.`);
+  if (!(extraTotal > 0)) errs.push('Captura un abono adicional mayor a 0.');
+  if (errs.length){ alert(errs.join('\n')); return; }
 
-function buildSchedule({ pvSub, rate, meses, primerPago, ivaRate, ivaModo, pagoSub }){
-  let saldo = pvSub;
+  // Convertimos el "extra" (capturado con IVA) a extra capital sin IVA
+  const extraCapitalSub = (baseResult.ivaModo === 'total')
+    ? round2(extraTotal / (1 + baseResult.ivaRate))
+    : round2(extraTotal); // si IVA solo sobre interés, el extra se va a capital sin IVA
+
+  let saldo = baseResult.financiarSub;
   const rows = [];
   let totalPagos = 0;
 
-  for (let k = 1; k <= meses; k++){
-    const fecha = addMonths(primerPago, k - 1);
+  // pagoSub y rate vienen de la corrida base
+  const pagoSub = baseResult.pagoSub;
+  const rate = baseResult.rate;
+
+  for (let k = 1; k <= mesesBase; k++){
+    const fecha = addMonths(baseResult.primerPago, k - 1);
 
     let interes = round2(saldo * rate);
     let capital = round2(pagoSub - interes);
 
-    let saldoFinal = round2(saldo - capital);
-
-    // Ajuste último pago para cerrar saldo por redondeos
-    if (k === meses){
-      capital = round2(capital + saldoFinal);
-      saldoFinal = 0;
+    // En el pago k aplicamos abono extra a capital
+    let abonoAplicado = 0;
+    if (k === pagoN){
+      abonoAplicado = extraCapitalSub;
+      capital = round2(capital + abonoAplicado);
     }
 
-    const baseIVA = (ivaModo === 'interes') ? interes : (capital + interes);
-    const ivaPago = round2(baseIVA * ivaRate);
+    // Si el capital excede el saldo, lo ajustamos (liquidación anticipada)
+    if (capital >= saldo){
+      capital = round2(saldo);
+    }
+
+    const baseIVA = (baseResult.ivaModo === 'interes') ? interes : (capital + interes);
+    const ivaPago = round2(baseIVA * baseResult.ivaRate);
     const pagoTotal = round2(capital + interes + ivaPago);
+
+    const saldoFinal = round2(saldo - capital);
 
     rows.push({
       n: k,
@@ -284,106 +309,39 @@ function buildSchedule({ pvSub, rate, meses, primerPago, ivaRate, ivaModo, pagoS
       interes,
       iva: ivaPago,
       pago: pagoTotal,
-      saldoFinal
+      saldoFinal,
+      abonoExtraTotal: (k === pagoN) ? extraTotal : 0
     });
 
     totalPagos = round2(totalPagos + pagoTotal);
     saldo = saldoFinal;
-  }
 
-  return { rows, totalPagos };
-}
-
-function calcularDesdePagos(){
-  const inp = getInputsPagos();
-  const errs = validarPagos(inp);
-  if (errs.length){
-    alert(errs.join('\n'));
-    return;
-  }
-
-  const financiarSubOriginal = round2(inp.financiarIncl / (1 + inp.ivaRate));
-  const rate = (inp.tasaAnual / 360) * inp.diasPeriodo;
-
-  let pagoSub = pmt(rate, inp.meses, financiarSubOriginal);
-  pagoSub = round2(pagoSub);
-
-  // Avanzamos pagos hechos para encontrar saldo actual
-  let saldo = financiarSubOriginal;
-  let esperadoPagado = 0;
-
-  for (let k = 1; k <= inp.pagosHechos; k++){
-    const interes = round2(saldo * rate);
-    const capital = round2(pagoSub - interes);
-
-    const baseIVA = (inp.ivaModo === 'interes') ? interes : (capital + interes);
-    const ivaPago = round2(baseIVA * inp.ivaRate);
-    const pagoTotal = round2(capital + interes + ivaPago);
-
-    esperadoPagado = round2(esperadoPagado + pagoTotal);
-    saldo = round2(saldo - capital);
-    if (saldo < 0) saldo = 0;
-  }
-
-  // Si capturan montoPagado, ajusta diferencia como abono extra (aprox) a capital
-  if (inp.montoPagado > 0){
-    const diff = round2(inp.montoPagado - esperadoPagado);
-    if (Math.abs(diff) >= 1){
-      const extraCapitalSub = round2(diff / (1 + inp.ivaRate));
-      saldo = round2(saldo - extraCapitalSub);
-      if (saldo < 0) saldo = 0;
+    // Si ya se liquidó, cortamos la corrida (plazo se acorta)
+    if (saldo <= 0){
+      break;
     }
   }
 
-  const mesesRestantes = inp.meses - inp.pagosHechos;
-  const primerPagoRestante = addMonths(inp.primerPago, inp.pagosHechos);
-
-  const { rows, totalPagos } = buildSchedule({
-    pvSub: saldo,
-    rate,
-    meses: mesesRestantes,
-    primerPago: primerPagoRestante,
-    ivaRate: inp.ivaRate,
-    ivaModo: inp.ivaModo,
-    pagoSub
-  });
-
-  const mensualidad = rows.length ? rows[0].pago : 0;
+  const mensualidad = baseResult.mensualidad; // la mensualidad “normal” sigue siendo la misma
 
   lastResult = {
-    mode: 'pagos',
-
-    cliente: inp.cliente,
-    total: inp.financiarIncl,
-
-    tasaAnual: inp.tasaAnual,
-    meses: mesesRestantes,
-    primerPago: primerPagoRestante,
-    ivaRate: inp.ivaRate,
-    ivaModo: inp.ivaModo,
-    diasPeriodo: inp.diasPeriodo,
-
-    subtotalTotal: financiarSubOriginal,
-    ivaTotal: round2(inp.financiarIncl - financiarSubOriginal),
-
-    engancheIncl: 0,
-    enganchePctReal: 0,
-
-    financiarIncl: inp.financiarIncl,
-    financiarSub: financiarSubOriginal,
-
-    rate,
-    pagoSub,
+    ...baseResult,
+    mode: 'abono',
+    meses: rows.length,          // plazo resultante
+    rows,
     mensualidad,
     totalPagos,
-    rows,
-
-    pagosHechos: inp.pagosHechos,
-    montoPagado: inp.montoPagado,
-    esperadoPagado
+    abonoPagoN: pagoN,
+    abonoExtra: extraTotal
   };
 
   render(lastResult);
+
+  // Si el acordeón estaba cerrado, lo abrimos para que vean qué corrieron
+  if (ui.togglePagos && ui.panelPagos){
+    ui.togglePagos.setAttribute('aria-expanded', 'true');
+    ui.panelPagos.hidden = false;
+  }
 }
 
 /* ===== Render ===== */
@@ -391,9 +349,8 @@ function render(res){
   ui.resSubtotal.textContent = fmtMXN(res.subtotalTotal);
   ui.resIva.textContent = fmtMXN(res.ivaTotal);
 
-  if (res.mode === 'pagos'){
-    const pagadoTxt = (res.montoPagado > 0) ? fmtMXN(res.montoPagado) : fmtMXN(res.esperadoPagado || 0);
-    ui.resEnganche.textContent = `Pagos hechos: ${res.pagosHechos || 0} · Pagado: ${pagadoTxt}`;
+  if (res.mode === 'abono'){
+    ui.resEnganche.textContent = `Abono en pago #${res.abonoPagoN}: +${fmtMXN(res.abonoExtra)} · Plazo resultante: ${res.meses} meses`;
   } else {
     ui.resEnganche.textContent = `${fmtMXN(res.engancheIncl)} (${fmtPct(res.enganchePctReal*100)})`;
   }
@@ -405,6 +362,10 @@ function render(res){
   ui.tablaBody.innerHTML = '';
   for (const r of res.rows){
     const tr = document.createElement('tr');
+
+    // Si quieres resaltar el pago donde hubo abono, puedes aplicar estilo aquí:
+    // if (r.abonoExtraTotal > 0) tr.classList.add('row-abono');
+
     tr.innerHTML = `
       <td>${r.n}</td>
       <td>${formatDateHuman(r.fecha)}</td>
@@ -425,6 +386,7 @@ function render(res){
 function limpiar(){
   // Sección 1
   ui.cliente.value = '';
+  if (ui.producto) ui.producto.value = '';
   ui.total.value = '';
   ui.enganchePct.value = '';
   ui.engancheMonto.value = '';
@@ -435,13 +397,8 @@ function limpiar(){
   ui.diasPeriodo.value = String(DIAS_PERIODO);
 
   // Sección 2
-  if (ui.cliente2) ui.cliente2.value = '';
-  if (ui.financiarIncl2) ui.financiarIncl2.value = '';
-  if (ui.tasaAnual2) ui.tasaAnual2.value = '';
-  if (ui.meses2) ui.meses2.value = '';
-  if (ui.ivaModo2) ui.ivaModo2.value = 'total';
-  if (ui.pagosHechos2) ui.pagosHechos2.value = '';
-  if (ui.montoPagado2) ui.montoPagado2.value = '';
+  if (ui.abonoPago) ui.abonoPago.value = '';
+  if (ui.abonoExtra) ui.abonoExtra.value = '';
 
   ui.tablaBody.innerHTML = '';
   ui.btnPDF.disabled = true;
@@ -454,6 +411,7 @@ function limpiar(){
   ui.resTotalFin.textContent = '—';
 
   lastResult = null;
+  baseResult = null;
 }
 
 /* ===== PDF ===== */
@@ -477,11 +435,7 @@ async function generarPDF(){
 
   // Logo (arriba derecha)
   let logoDataUrl = null;
-  try{
-    logoDataUrl = await loadImageAsDataURL('/assets/logo.jpg');
-  }catch(e){
-    logoDataUrl = null;
-  }
+  try{ logoDataUrl = await loadImageAsDataURL('/assets/logo.jpg'); }catch(e){ logoDataUrl = null; }
 
   const pageWidth = doc.internal.pageSize.getWidth();
   if (logoDataUrl){
@@ -493,8 +447,9 @@ async function generarPDF(){
   }
 
   const company = 'Jardines de Juan Pablo';
-  const titulo = (lastResult.mode === 'pagos') ? 'CORRIDA DESDE PAGOS' : 'VENTA CON FINANCIAMIENTO';
+  const titulo = (lastResult.mode === 'abono') ? 'ABONO A CAPITAL (SIMULACIÓN)' : 'VENTA CON FINANCIAMIENTO';
   const cliente = lastResult.cliente || '—';
+  const producto = lastResult.producto || '—';
 
   const left = 40;
   let y = 48;
@@ -506,10 +461,17 @@ async function generarPDF(){
   doc.setFontSize(12);
   doc.text(titulo, left, y + 18);
 
+  // Producto debajo del título (lo que pediste)
+  doc.setFontSize(10);
+  doc.setFont('helvetica','bold');
+  doc.text('Producto:', left, y + 34);
+  doc.setFont('helvetica','normal');
+  doc.text(String(producto), left + 70, y + 34);
+
   doc.setFont('helvetica','normal');
   doc.setFontSize(10);
 
-  y += 42;
+  y += 56;
 
   const ivaModoTxt = (lastResult.ivaModo === 'interes')
     ? 'IVA sobre interés'
@@ -529,6 +491,12 @@ async function generarPDF(){
     { label: 'Mensualidad aprox.:', value: fmtMXN(lastResult.mensualidad) },
     { label: 'Total (suma de pagos):', value: fmtMXN(lastResult.totalPagos) }
   ];
+
+  if (lastResult.mode === 'abono'){
+    items.splice(2, 0,
+      { label: 'Abono:', value: `Pago #${lastResult.abonoPagoN} · +${fmtMXN(lastResult.abonoExtra)} (con IVA)` }
+    );
+  }
 
   for (const it of items){
     doc.setFont('helvetica','bold');
