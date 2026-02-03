@@ -648,6 +648,20 @@ async function generarPDF(){
     margin: { left, right: 40 }
   });
 
+  const legalTxt =
+  'Esta cotización es únicamente para fines informativos y de simulación. ' +
+  'La tasa de interés es fija y el cálculo puede considerar IVA sobre capital e interés (según el modo seleccionado). ' +
+  'Los importes mostrados son estimaciones basadas en los datos capturados y pueden variar por redondeos, fechas y políticas internas. ' +
+  'La presente no constituye contrato, autorización ni compromiso de otorgar financiamiento. ' +
+  'La operación queda sujeta a validación, aprobación y condiciones comerciales de MEGUESA S.A. de C.V.';
+  
+  const pageH = doc.internal.pageSize.getHeight();
+  const yLegal = Math.min(doc.lastAutoTable.finalY + 16, pageH - 44);
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.text(legalTxt, left, Math.min(yLegal, doc.internal.pageSize.getHeight() - 40), { maxWidth: pageWidth - left - 40 });
+
+  
   // Abrir en otra pestaña para previsualizar
   const pdfBlob = doc.output('blob');
   const pdfUrl = URL.createObjectURL(pdfBlob);
