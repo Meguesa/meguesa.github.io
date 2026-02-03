@@ -108,10 +108,21 @@
           Simula un <strong>abono extra</strong> en un pago específico (además de la mensualidad).
           Esto reduce el saldo y normalmente <strong>acorta el plazo</strong>.
         </p>
-    
+
         <div class="grid">
           <label class="field">
-            <span>Número de pago donde se hará el abono</span>
+            <span>¿Qué quieres mantener?</span>
+            <select id="abonoEfecto">
+              <option value="acortar">Mantener mensualidad y acortar plazo</option>
+              <option value="recalcular">Mantener plazo y recalcular mensualidad</option>
+            </select>
+            <small>
+              “Acortar plazo” mantiene la mensualidad normal. “Recalcular” mantiene el plazo y ajusta la mensualidad desde el siguiente pago.
+            </small>
+          </label>
+          
+          <label class="field">
+            <span># de Pago donde se hará el abono</span>
             <input id="abonoPago" type="number" inputmode="numeric" placeholder="Ej. 5" min="1" step="1" />
             <small>Ejemplo: 5 = en el 5to pago.</small>
           </label>
@@ -134,16 +145,16 @@
       <h2>Resumen</h2>
       <div class="summary">
         <div class="summary-item">
+          <div class="k">Enganche</div>
+          <div class="v" id="resEnganche">—</div>
+        </div>
+        <div class="summary-item">
           <div class="k">Subtotal (sin IVA)</div>
           <div class="v" id="resSubtotal">—</div>
         </div>
         <div class="summary-item">
           <div class="k">IVA total</div>
           <div class="v" id="resIva">—</div>
-        </div>
-        <div class="summary-item">
-          <div class="k">Enganche</div>
-          <div class="v" id="resEnganche">—</div>
         </div>
         <div class="summary-item">
           <div class="k">Monto a financiar</div>
