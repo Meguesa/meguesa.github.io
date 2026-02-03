@@ -230,6 +230,10 @@ tbody tr:hover{ background:#f7f7f7; }
 }
 */
 
-.legal{ margin-top: 10px; max-width: 760px; }
+.legal{ margin-top: 10px auto 0 auto; max-width: 760px; width: 100%;}
 .legal summary{ cursor:pointer; font-weight:700; }
 .legal p{ margin-top:6px; font-size:12px; line-height:1.35; opacity:0.85; }
+
+.footer{
+  text-align: center;
+}
