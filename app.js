@@ -67,7 +67,10 @@ const ui = {
   btnLimpiar: $('btnLimpiar'),
   btnPDF: $('btnPDF'),
   tablaBody: document.querySelector('#tabla tbody'),
+
+  // Sección 2
   abonoEfecto: $('abonoEfecto'),
+  btnLimpiarAbono: $('btnLimpiarAbono'),
 
   // Resumen
   resSubtotal: $('resSubtotal'),
@@ -107,6 +110,7 @@ let baseResult = null;     // corrida base (sin abono) para simular sobre ella
   if (ui.btnPDF) ui.btnPDF.addEventListener('click', (e) => { e.preventDefault(); generarPDF(); });
 
   if (ui.btnSimularAbono) ui.btnSimularAbono.addEventListener('click', (e) => { e.preventDefault(); simularAbonoCapital(); });
+  if (ui.btnLimpiarAbono) ui.btnLimpiarAbono.addEventListener('click', (e) => { e.preventDefault(); limpiarAbono(); });
 
   // Acordeón: forzar cerrado al iniciar
   if (ui.togglePagos && ui.panelPagos){
@@ -421,6 +425,31 @@ function simularAbonoCapital(){
   if (ui.togglePagos && ui.panelPagos){
     ui.togglePagos.setAttribute('aria-expanded', 'true');
     ui.panelPagos.hidden = false;
+  }
+}
+
+function limpiarAbono(){
+  if (ui.abonoPago) ui.abonoPago.value = '';
+  if (ui.abonoExtra) ui.abonoExtra.value = '';
+  if (ui.abonoEfecto) ui.abonoEfecto.value = 'acortar';
+
+  // No borramos la corrida base; solo quitamos la simulación y regresamos a la base
+  if (baseResult){
+    lastResult = baseResult;
+    render(lastResult);
+  } else {
+    // Si nunca calcularon la base, solo deshabilita PDF y limpia tabla/resumen
+    ui.tablaBody.innerHTML = '';
+    ui.btnPDF.disabled = true;
+
+    ui.resSubtotal.textContent = '—';
+    ui.resIva.textContent = '—';
+    ui.resEnganche.textContent = '—';
+    ui.resFinanciar.textContent = '—';
+    ui.resMensualidad.textContent = '—';
+    ui.resTotalFin.textContent = '—';
+
+    lastResult = null;
   }
 }
 
