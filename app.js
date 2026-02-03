@@ -67,6 +67,17 @@ const ui = {
   resFinanciar: $('resFinanciar'),
   resMensualidad: $('resMensualidad'),
   resTotalFin: $('resTotalFin'),
+
+  // ===== Sección 2 (nuevo cálculo desde pagos) =====
+  cliente2: $('cliente2'),
+  financiarIncl2: $('financiarIncl2'),
+  tasaAnual2: $('tasaAnual2'),
+  meses2: $('meses2'),
+  primerPago2: $('primerPago2'),
+  ivaModo2: $('ivaModo2'),
+  pagosHechos2: $('pagosHechos2'),
+  montoPagado2: $('montoPagado2'),
+  btnCalcularPagos: $('btnCalcularPagos'),
 };
 
 let lastResult = null;
@@ -83,8 +94,13 @@ let lastResult = null;
   ui.btnLimpiar.addEventListener('click', (e) => { e.preventDefault(); limpiar(); });
   ui.btnPDF.addEventListener('click', (e) => { e.preventDefault(); generarPDF(); });
 
+  // ===== Sección 2: defaults + botón =====
+  if (ui.primerPago2) ui.primerPago2.value = formatDateISO(d);
+  if (ui.btnCalcularPagos) ui.btnCalcularPagos.addEventListener('click', (e) => { e.preventDefault(); calcularDesdePagos(); });
+
   // Si editan enganche monto, recalculamos % visualmente (al calcular)
 })();
+
 
 /* ===== Core ===== */
 function getInputs(){
@@ -202,14 +218,198 @@ function calcular(){
     rows
   };
 
+  
+// ===== Sección 2 (nuevo cálculo desde pagos) =====
+function getInputsPagos(){
+  const financiarIncl = Number(ui.financiarIncl2?.value || 0);
+  const tasaAnual = Number(ui.tasaAnual2?.value || 0) / 100;
+  const meses = parseInt(ui.meses2?.value || '0', 10);
+  const primerPago = ui.primerPago2?.value ? parseDateLocal(ui.primerPago2.value) : new Date();
+  const ivaModo = ui.ivaModo2?.value || 'total';
+  const pagosHechos = parseInt(ui.pagosHechos2?.value || '0', 10);
+  const montoPagado = Number(ui.montoPagado2?.value || 0);
+  const cliente = (ui.cliente2?.value || '').trim();
+
+  return {
+    cliente,
+    financiarIncl,
+    tasaAnual,
+    meses,
+    primerPago,
+    ivaModo,
+    pagosHechos,
+    montoPagado,
+    ivaRate: 0.16,     // fijo (igual que tu sección 1)
+    diasPeriodo: 30    // fijo (igual que tu sección 1)
+  };
+}
+
+function validarPagos(inp){
+  const errs = [];
+  if (!(inp.financiarIncl > 0)) errs.push('Captura un Monto a financiar (con IVA) mayor a 0.');
+  if (!(inp.meses > 0)) errs.push('Captura meses totales (mayor a 0).');
+  if (inp.tasaAnual < 0) errs.push('Tasa anual inválida.');
+  if (inp.pagosHechos < 0) errs.push('Pagos hechos inválido.');
+  if (inp.pagosHechos > inp.meses) errs.push('Pagos hechos no puede ser mayor a meses totales.');
+  if (inp.montoPagado < 0) errs.push('Monto pagado inválido.');
+  return errs;
+}
+
+function buildSchedule({ pvSub, rate, meses, primerPago, ivaRate, ivaModo, pagoSub }){
+  let saldo = pvSub;
+  const rows = [];
+  let totalPagos = 0;
+
+  for (let k = 1; k <= meses; k++){
+    const fecha = addMonths(primerPago, k - 1);
+
+    let interes = round2(saldo * rate);
+    let capital = round2(pagoSub - interes);
+
+    let saldoFinal = round2(saldo - capital);
+
+    // Ajuste último pago para cerrar saldo por redondeos
+    if (k === meses){
+      capital = round2(capital + saldoFinal);
+      saldoFinal = 0;
+    }
+
+    const baseIVA = (ivaModo === 'interes') ? interes : (capital + interes);
+    const ivaPago = round2(baseIVA * ivaRate);
+    const pagoTotal = round2(capital + interes + ivaPago);
+
+    rows.push({
+      n: k,
+      fecha,
+      saldoInicial: saldo,
+      capital,
+      interes,
+      iva: ivaPago,
+      pago: pagoTotal,
+      saldoFinal
+    });
+
+    totalPagos = round2(totalPagos + pagoTotal);
+    saldo = saldoFinal;
+  }
+
+  return { rows, totalPagos };
+}
+
+function calcularDesdePagos(){
+  const inp = getInputsPagos();
+  const errs = validarPagos(inp);
+  if (errs.length){
+    alert(errs.join('\n'));
+    return;
+  }
+
+  // Convertimos a base sin IVA
+  const financiarSubOriginal = round2(inp.financiarIncl / (1 + inp.ivaRate));
+
+  // rate por periodo base 360 (30 días fijo)
+  const rate = (inp.tasaAnual / 360) * inp.diasPeriodo;
+
+  // Pago del contrato original (sin IVA)
+  let pagoSub = pmt(rate, inp.meses, financiarSubOriginal);
+  pagoSub = round2(pagoSub);
+
+  // Avanzamos pagos hechos para encontrar saldo actual
+  let saldo = financiarSubOriginal;
+  let esperadoPagado = 0;
+
+  for (let k = 1; k <= inp.pagosHechos; k++){
+    const interes = round2(saldo * rate);
+    const capital = round2(pagoSub - interes);
+
+    const baseIVA = (inp.ivaModo === 'interes') ? interes : (capital + interes);
+    const ivaPago = round2(baseIVA * inp.ivaRate);
+    const pagoTotal = round2(capital + interes + ivaPago);
+
+    esperadoPagado = round2(esperadoPagado + pagoTotal);
+    saldo = round2(saldo - capital);
+    if (saldo < 0) saldo = 0;
+  }
+
+  // Si capturan montoPagado, ajustamos diferencia como abono extra (aprox) a capital
+  if (inp.montoPagado > 0){
+    const diff = round2(inp.montoPagado - esperadoPagado);
+    if (Math.abs(diff) >= 1){
+      const extraCapitalSub = round2(diff / (1 + inp.ivaRate));
+      saldo = round2(saldo - extraCapitalSub);
+      if (saldo < 0) saldo = 0;
+    }
+  }
+
+  const mesesRestantes = inp.meses - inp.pagosHechos;
+  const primerPagoRestante = addMonths(inp.primerPago, inp.pagosHechos);
+
+  const { rows, totalPagos } = buildSchedule({
+    pvSub: saldo,
+    rate,
+    meses: mesesRestantes,
+    primerPago: primerPagoRestante,
+    ivaRate: inp.ivaRate,
+    ivaModo: inp.ivaModo,
+    pagoSub
+  });
+
+  const mensualidad = rows.length ? rows[0].pago : 0;
+
+  // Armamos lastResult con las mismas llaves que usa tu render actual
+  lastResult = {
+    // Señal para render (opcional)
+    mode: 'pagos',
+
+    // Para PDF/resumen
+    cliente: inp.cliente,
+    total: inp.financiarIncl,          // referencia
+    engPct: 0,
+    engMonto: 0,
+
+    tasaAnual: inp.tasaAnual,
+    meses: mesesRestantes,
+    primerPago: primerPagoRestante,
+    ivaRate: inp.ivaRate,
+    ivaModo: inp.ivaModo,
+    diasPeriodo: inp.diasPeriodo,
+
+    // “Resumen”
+    subtotalTotal: financiarSubOriginal,
+    ivaTotal: round2(inp.financiarIncl - financiarSubOriginal),
+    engancheIncl: 0,
+    enganchePctReal: 0,
+
+    // “Monto a financiar”
+    financiarIncl: inp.financiarIncl,
+    financiarSub: financiarSubOriginal,
+
+    rate,
+    pagoSub,
+    mensualidad,
+    totalPagos,
+    rows,
+
+    // Datos extra (por si luego quieres mostrarlos)
+    pagosHechos: inp.pagosHechos,
+    montoPagado: inp.montoPagado,
+    esperadoPagado
+  };
+
   render(lastResult);
 }
+
 
 function render(res){
   // resumen
   ui.resSubtotal.textContent = fmtMXN(res.subtotalTotal);
   ui.resIva.textContent = fmtMXN(res.ivaTotal);
-  ui.resEnganche.textContent = `${fmtMXN(res.engancheIncl)} (${fmtPct(res.enganchePctReal*100)})`;
+  if (res.mode === 'pagos'){
+    const pagadoTxt = (res.montoPagado > 0) ? fmtMXN(res.montoPagado) : fmtMXN(res.esperadoPagado || 0);
+    ui.resEnganche.textContent = `Pagos hechos: ${res.pagosHechos || 0} · Pagado: ${pagadoTxt}`;
+  } else {
+    ui.resEnganche.textContent = `${fmtMXN(res.engancheIncl)} (${fmtPct(res.enganchePctReal*100)})`;
+  }
   ui.resFinanciar.textContent = fmtMXN(res.financiarIncl);
   ui.resMensualidad.textContent = fmtMXN(res.mensualidad);
   ui.resTotalFin.textContent = fmtMXN(res.totalPagos);
@@ -254,8 +454,18 @@ function limpiar(){
   ui.resMensualidad.textContent = '—';
   ui.resTotalFin.textContent = '—';
 
+  // ===== Sección 2 =====
+  if (ui.cliente2) ui.cliente2.value = '';
+  if (ui.financiarIncl2) ui.financiarIncl2.value = '';
+  if (ui.tasaAnual2) ui.tasaAnual2.value = '';
+  if (ui.meses2) ui.meses2.value = '';
+  if (ui.ivaModo2) ui.ivaModo2.value = 'total';
+  if (ui.pagosHechos2) ui.pagosHechos2.value = '';
+  if (ui.montoPagado2) ui.montoPagado2.value = '';
+
   lastResult = null;
 }
+
 
 async function loadImageAsDataURL(url){
   const resp = await fetch(url, { cache: 'no-cache' });
