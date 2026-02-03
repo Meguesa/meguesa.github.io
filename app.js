@@ -218,7 +218,9 @@ function calcular(){
     rows
   };
 
-  
+  render(lastResult);
+}
+
 // ===== Sección 2 (nuevo cálculo desde pagos) =====
 function getInputsPagos(){
   const financiarIncl = Number(ui.financiarIncl2?.value || 0);
@@ -395,10 +397,6 @@ function calcularDesdePagos(){
     montoPagado: inp.montoPagado,
     esperadoPagado
   };
-
-  render(lastResult);
-}
-
 
 function render(res){
   // resumen
