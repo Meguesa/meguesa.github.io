@@ -115,7 +115,7 @@ let lastResult = null;
   // Acordeón: Sección 2 (por default cerrada)
   if (ui.togglePagos && ui.panelPagos){
     ui.togglePagos.addEventListener('click', () => {
-      const isOpen = ui.togglePagos.getAttribute('aria-expanded') === 'true';
+      const isOpen = ui.togglePagos.getAttribute('aria-expanded') === 'false';
       ui.togglePagos.setAttribute('aria-expanded', String(!isOpen));
       ui.panelPagos.hidden = isOpen;
     });
