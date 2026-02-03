@@ -64,12 +64,7 @@
           <span>Primer pago (fecha)</span>
           <input id="primerPago" type="date" />
         </label>
-
-        <label class="field">
-          <span>IVA (%)</span>
-          <input id="ivaPct" type="number" inputmode="decimal" value="16" min="0" max="30" step="0.01" />
-        </label>
-
+        
         <label class="field">
           <span>Cálculo de IVA</span>
           <select id="ivaModo">
@@ -79,8 +74,13 @@
         </label>
 
         <label class="field">
+          <span>IVA (%)</span>
+          <input id="ivaPct" value="16" readonly inputmode="numeric">
+        </label>
+        
+        <label class="field">
           <span>Días por periodo (base 360)</span>
-          <input id="diasPeriodo" type="number" inputmode="numeric" value="30" min="1" max="31" step="1" />
+          <input id="diasPeriodo" value="30" readonly inputmode="numeric">
           <small>Tu plantilla usa 30 días (360/30).</small>
         </label>
       </div>
