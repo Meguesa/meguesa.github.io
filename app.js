@@ -67,6 +67,7 @@ const ui = {
   btnLimpiar: $('btnLimpiar'),
   btnPDF: $('btnPDF'),
   tablaBody: document.querySelector('#tabla tbody'),
+  abonoEfecto: $('abonoEfecto'),
 
   // Resumen
   resSubtotal: $('resSubtotal'),
@@ -256,6 +257,7 @@ function simularAbonoCapital(){
 
   const pagoN = parseInt(ui.abonoPago?.value || '0', 10);
   const extraTotal = Number(ui.abonoExtra?.value || 0);
+  const efecto = ui.abonoEfecto?.value || 'acortar'; // acortar | recalcular
 
   const mesesBase = baseResult.mesesOriginal || baseResult.meses;
 
@@ -264,45 +266,43 @@ function simularAbonoCapital(){
   if (!(extraTotal > 0)) errs.push('Captura un abono adicional mayor a 0.');
   if (errs.length){ alert(errs.join('\n')); return; }
 
-  // Convertimos el "extra" (capturado con IVA) a extra capital sin IVA
+  // Extra capturado como “lo que paga el cliente (con IVA)”
+  // - Si IVA es “total”, el extra incluye IVA -> lo convertimos a base sin IVA para capital
+  // - Si IVA es “interes”, el extra se considera capital (sin IVA)
   const extraCapitalSub = (baseResult.ivaModo === 'total')
     ? round2(extraTotal / (1 + baseResult.ivaRate))
-    : round2(extraTotal); // si IVA solo sobre interés, el extra se va a capital sin IVA
+    : round2(extraTotal);
+
+  const rate = baseResult.rate;
+  const pagoSubBase = baseResult.pagoSub;
 
   let saldo = baseResult.financiarSub;
   const rows = [];
   let totalPagos = 0;
 
-  // pagoSub y rate vienen de la corrida base
-  const pagoSub = baseResult.pagoSub;
-  const rate = baseResult.rate;
-
-  for (let k = 1; k <= mesesBase; k++){
-    const fecha = addMonths(baseResult.primerPago, k - 1);
+  // Helper: calcula una fila y regresa saldoFinal
+  function pushRow(n, pagoSub, extraCapSub, forceClose){
+    const fecha = addMonths(baseResult.primerPago, n - 1);
 
     let interes = round2(saldo * rate);
-    let capital = round2(pagoSub - interes);
+    let capital = round2(pagoSub - interes + (extraCapSub || 0));
 
-    // En el pago k aplicamos abono extra a capital
-    let abonoAplicado = 0;
-    if (k === pagoN){
-      abonoAplicado = extraCapitalSub;
-      capital = round2(capital + abonoAplicado);
-    }
+    if (capital >= saldo) capital = round2(saldo);
 
-    // Si el capital excede el saldo, lo ajustamos (liquidación anticipada)
-    if (capital >= saldo){
-      capital = round2(saldo);
+    let saldoFinal = round2(saldo - capital);
+
+    // si es el último periodo planificado, cerramos por redondeo
+    if (forceClose && saldoFinal !== 0){
+      capital = round2(capital + saldoFinal);
+      saldoFinal = 0;
     }
 
     const baseIVA = (baseResult.ivaModo === 'interes') ? interes : (capital + interes);
     const ivaPago = round2(baseIVA * baseResult.ivaRate);
     const pagoTotal = round2(capital + interes + ivaPago);
 
-    const saldoFinal = round2(saldo - capital);
-
     rows.push({
-      n: k,
+      n,
       fecha,
       saldoInicial: saldo,
       capital,
@@ -310,27 +310,107 @@ function simularAbonoCapital(){
       iva: ivaPago,
       pago: pagoTotal,
       saldoFinal,
-      abonoExtraTotal: (k === pagoN) ? extraTotal : 0
+      abonoExtraTotal: (n === pagoN) ? extraTotal : 0
     });
 
     totalPagos = round2(totalPagos + pagoTotal);
     saldo = saldoFinal;
-
-    // Si ya se liquidó, cortamos la corrida (plazo se acorta)
-    if (saldo <= 0){
-      break;
-    }
   }
 
-  const mensualidad = baseResult.mensualidad; // la mensualidad “normal” sigue siendo la misma
+  // 1) Construimos del pago 1 al pagoN (aplicando abono en pagoN)
+  for (let n = 1; n <= pagoN; n++){
+    const extraThis = (n === pagoN) ? extraCapitalSub : 0;
+    // si pagoN también es el último del plazo original, cerramos
+    const forceClose = (n === mesesBase);
+    pushRow(n, pagoSubBase, extraThis, forceClose);
+
+    if (saldo <= 0) break; // liquidación anticipada
+  }
+
+  // Si se liquidó, ya terminamos
+  if (saldo <= 0){
+    lastResult = {
+      ...baseResult,
+      mode: 'abono',
+      abonoEfecto: efecto,
+      meses: rows.length,
+      rows,
+      totalPagos,
+      mensualidad: baseResult.mensualidad,
+      abonoPagoN: pagoN,
+      abonoExtra: extraTotal
+    };
+    render(lastResult);
+    return;
+  }
+
+  // 2) Continuación según efecto
+  if (efecto === 'acortar'){
+    // Mantener mensualidad y acortar plazo:
+    for (let n = pagoN + 1; n <= mesesBase; n++){
+      const forceClose = (n === mesesBase);
+      pushRow(n, pagoSubBase, 0, forceClose);
+      if (saldo <= 0) break;
+    }
+
+    lastResult = {
+      ...baseResult,
+      mode: 'abono',
+      abonoEfecto: efecto,
+      meses: rows.length,          // plazo resultante
+      rows,
+      totalPagos,
+      mensualidad: baseResult.mensualidad,
+      abonoPagoN: pagoN,
+      abonoExtra: extraTotal
+    };
+    render(lastResult);
+    return;
+  }
+
+  // Mantener plazo y recalcular mensualidad:
+  const remainingPeriods = mesesBase - pagoN;
+  if (remainingPeriods <= 0){
+    lastResult = {
+      ...baseResult,
+      mode: 'abono',
+      abonoEfecto: efecto,
+      meses: rows.length,
+      rows,
+      totalPagos,
+      mensualidad: baseResult.mensualidad,
+      abonoPagoN: pagoN,
+      abonoExtra: extraTotal
+    };
+    render(lastResult);
+    return;
+  }
+
+  // Nuevo pagoSub (sin IVA) desde el siguiente periodo
+  let pagoSubNuevo = pmt(rate, remainingPeriods, saldo);
+  pagoSubNuevo = round2(pagoSubNuevo);
+
+  for (let j = 1; j <= remainingPeriods; j++){
+    const n = pagoN + j;
+    const forceClose = (n === mesesBase);
+    pushRow(n, pagoSubNuevo, 0, forceClose);
+    if (saldo <= 0) break;
+  }
+
+  // Mensualidad a mostrar: el pago del siguiente periodo (si existe)
+  const idxNext = pagoN; // index 0-based del pagoN+1
+  const mensualidadNueva = rows[idxNext] ? rows[idxNext].pago : baseResult.mensualidad;
 
   lastResult = {
     ...baseResult,
     mode: 'abono',
-    meses: rows.length,          // plazo resultante
+    abonoEfecto: efecto,
+    meses: rows.length,          // si liquidó antes, se acorta
     rows,
-    mensualidad,
     totalPagos,
+    pagoSubNuevo,
+    mensualidad: mensualidadNueva,
+    mensualidadAnterior: baseResult.mensualidad,
     abonoPagoN: pagoN,
     abonoExtra: extraTotal
   };
@@ -350,7 +430,12 @@ function render(res){
   ui.resIva.textContent = fmtMXN(res.ivaTotal);
 
   if (res.mode === 'abono'){
-    ui.resEnganche.textContent = `Abono en pago #${res.abonoPagoN}: +${fmtMXN(res.abonoExtra)} · Plazo resultante: ${res.meses} meses`;
+    const efectoTxt = (res.abonoEfecto === 'recalcular')
+      ? `Mantener plazo · Nueva mensualidad: ${fmtMXN(res.mensualidad)}`
+      : `Mantener mensualidad · Plazo resultante: ${res.meses} meses`;
+  
+    ui.resEnganche.textContent = 
+      `Abono en pago #${res.abonoPagoN}: +${fmtMXN(res.abonoExtra)} · Plazo resultante: ${res.meses} meses`;
   } else {
     ui.resEnganche.textContent = `${fmtMXN(res.engancheIncl)} (${fmtPct(res.enganchePctReal*100)})`;
   }
@@ -399,6 +484,7 @@ function limpiar(){
   // Sección 2
   if (ui.abonoPago) ui.abonoPago.value = '';
   if (ui.abonoExtra) ui.abonoExtra.value = '';
+  if (ui.abonoEfecto) ui.abonoEfecto.value = 'acortar';
 
   ui.tablaBody.innerHTML = '';
   ui.btnPDF.disabled = true;
