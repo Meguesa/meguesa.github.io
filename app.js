@@ -567,17 +567,6 @@ async function generarPDF(opts = {}){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'letter' });
 
-  // Helpers locales (solo para PDF)
-  const compressRows = (rows, maxRows = 18) => {
-    if (!Array.isArray(rows)) return [];
-    if (rows.length <= maxRows) return rows;
-    const headCount = Math.floor((maxRows - 1) / 2);
-    const tailCount = maxRows - 1 - headCount;
-    const head = rows.slice(0, headCount);
-    const tail = rows.slice(-tailCount);
-    return [...head, { _ellipsis: true }, ...tail];
-  };
-
   // Logo (arriba derecha)
   let logoDataUrl = null;
   try{ logoDataUrl = await loadImageAsDataURL('/assets/logo.jpg'); }catch(e){ logoDataUrl = null; }
@@ -662,23 +651,16 @@ async function generarPDF(opts = {}){
   ]];
 
   // Si onePage=true, comprimimos tabla (misma idea que “modo impresión”)
-  const rowsForPdf = onePage ? compressRows(lastResult.rows, 18) : lastResult.rows;
-
-  const body = rowsForPdf.map(r => {
-    if (r._ellipsis){
-      return ['…','…','…','…','…','…','…','…'];
-    }
-    return [
-      String(r.n),
-      formatDateHuman(r.fecha),
-      fmtMXN(r.saldoInicial),
-      fmtMXN(r.capital),
-      fmtMXN(r.interes),
-      fmtMXN(r.iva),
-      fmtMXN(r.pago),
-      fmtMXN(r.saldoFinal)
-    ];
-  });
+  const body = (lastResult.rows || []).map(r => ([
+    String(r.n),
+    formatDateHuman(r.fecha),
+    fmtMXN(r.saldoInicial),
+    fmtMXN(r.capital),
+    fmtMXN(r.interes),
+    fmtMXN(r.iva),
+    fmtMXN(r.pago),
+    fmtMXN(r.saldoFinal)
+  ]));
 
   doc.autoTable({
     startY: y,
@@ -790,7 +772,7 @@ async function generarPDFParaCompartir(){
   // Caso 1: tu generarPDF ya soporta { openPreview:false, returnBlob:true, onePage:true }
   // Si no, va a lanzar error y cae al catch.
   try{
-    const out = await generarPDF({ openPreview:false, returnBlob:true, onePage:true });
+    const out = await generarPDF({ openPreview:false, returnBlob:true });
     if (out && out.blob) return out;
   }catch(e){
     // seguimos al fallback (sin PDF adjunto)
@@ -857,7 +839,7 @@ function abrirModoImpresion(){
     : 'IVA sobre (capital + interés)';
 
   // “1 hoja”: comprimimos si es muy larga
-  const rows = compressRows(res.rows || [], 18);
+  const rows = res.rows || [];
 
   const detalle = [
     ['Producto', (res.producto || res.productos || res.prod || '—')],
@@ -871,15 +853,7 @@ function abrirModoImpresion(){
     ['IVA', `${fmtPct((res.ivaRate || 0.16) * 100)} · ${ivaModoTxt}`],
   ];
 
-  const filasHtml = rows.map(r => {
-    if (r._ellipsis){
-      return `
-        <tr class="ellipsis">
-          <td>…</td><td>…</td><td>…</td><td>…</td><td>…</td><td>…</td><td>…</td><td>…</td>
-        </tr>
-      `;
-    }
-    return `
+  const filasHtml = rows.map(r => `
       <tr>
         <td>${escHtml(r.n)}</td>
         <td>${escHtml(formatDateHuman(r.fecha))}</td>
@@ -890,8 +864,7 @@ function abrirModoImpresion(){
         <td style="text-align:right"><strong>${escHtml(fmtMXN(r.pago))}</strong></td>
         <td style="text-align:right">${escHtml(fmtMXN(r.saldoFinal))}</td>
       </tr>
-    `;
-  }).join('');
+    `).join('');
 
   const w = window.open('', '_blank');
   if (!w){
