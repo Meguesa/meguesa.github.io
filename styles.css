@@ -211,3 +211,21 @@ tbody tr:hover{ background:#f7f7f7; }
 .accordion-header .acc-title{
   font-weight: 700;
 }
+
+/* Dos campos en la misma fila (ocupa una fila completa del grid principal) */
+.field-pair{
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+/* En pantallas muy angostas, si quieres que se apilen, descomenta esto */
+/*
+@media (max-width: 360px){
+  .field-pair{
+    grid-template-columns: 1fr;
+  }
+}
+*/
+
