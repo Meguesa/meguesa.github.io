@@ -66,6 +66,9 @@ const ui = {
   btnCalcular: $('btnCalcular'),
   btnLimpiar: $('btnLimpiar'),
   btnPDF: $('btnPDF'),
+  btnCompartir: $('btnCompartir'),
+  btnImprimir: $('btnImprimir'),
+
   tablaBody: document.querySelector('#tabla tbody'),
 
   // Sección 2
@@ -108,7 +111,9 @@ let baseResult = null;     // corrida base (sin abono) para simular sobre ella
   if (ui.btnCalcular) ui.btnCalcular.addEventListener('click', (e) => { e.preventDefault(); calcular(); });
   if (ui.btnLimpiar) ui.btnLimpiar.addEventListener('click', (e) => { e.preventDefault(); limpiar(); });
   if (ui.btnPDF) ui.btnPDF.addEventListener('click', (e) => { e.preventDefault(); generarPDF(); });
-
+  if (ui.btnCompartir) ui.btnCompartir.addEventListener('click', (e) => { e.preventDefault(); compartirCotizacion(); });
+  if (ui.btnImprimir) ui.btnImprimir.addEventListener('click', (e) => { e.preventDefault(); abrirModoImpresion(); });
+  
   if (ui.btnSimularAbono) ui.btnSimularAbono.addEventListener('click', (e) => { e.preventDefault(); simularAbonoCapital(); });
   if (ui.btnLimpiarAbono) ui.btnLimpiarAbono.addEventListener('click', (e) => { e.preventDefault(); limpiarAbono(); });
 
@@ -494,6 +499,8 @@ function render(res){
   }
 
   ui.btnPDF.disabled = false;
+  if (ui.btnCompartir) ui.btnCompartir.disabled = false;
+  if (ui.btnImprimir) ui.btnImprimir.disabled = false;
 }
 
 /* ===== Limpiar ===== */
@@ -517,6 +524,8 @@ function limpiar(){
 
   ui.tablaBody.innerHTML = '';
   ui.btnPDF.disabled = true;
+  if (ui.btnCompartir) ui.btnCompartir.disabled = true;
+  if (ui.btnImprimir) ui.btnImprimir.disabled = true;
 
   ui.resSubtotal.textContent = '—';
   ui.resIva.textContent = '—';
@@ -542,11 +551,32 @@ async function loadImageAsDataURL(url){
   });
 }
 
-async function generarPDF(){
-  if (!lastResult) return;
+async function generarPDF(opts = {}){
+  // opts:
+  // - openPreview: true/false (default true)
+  // - returnBlob: true/false (default false)
+  // - onePage: true/false (default false) -> comprime tabla para que quepa mejor
+  const {
+    openPreview = true,
+    returnBlob = false,
+    onePage = false
+  } = opts;
+
+  if (!lastResult) return null;
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'letter' });
+
+  // Helpers locales (solo para PDF)
+  const compressRows = (rows, maxRows = 18) => {
+    if (!Array.isArray(rows)) return [];
+    if (rows.length <= maxRows) return rows;
+    const headCount = Math.floor((maxRows - 1) / 2);
+    const tailCount = maxRows - 1 - headCount;
+    const head = rows.slice(0, headCount);
+    const tail = rows.slice(-tailCount);
+    return [...head, { _ellipsis: true }, ...tail];
+  };
 
   // Logo (arriba derecha)
   let logoDataUrl = null;
@@ -576,6 +606,7 @@ async function generarPDF(){
 
   doc.setFontSize(12);
   doc.text(titulo, left, y + 18);
+
   if (subtitulo){
     doc.setFont('helvetica','bold');
     doc.setFontSize(10);
@@ -608,16 +639,19 @@ async function generarPDF(){
   ];
 
   if (lastResult.mode === 'abono'){
-    items.splice(2, 0,
-      { label: 'Abono:', value: `Pago #${lastResult.abonoPagoN} · +${fmtMXN(lastResult.abonoExtra)} (con IVA)` }
-    );
+    items.splice(2, 0, {
+      label: 'Abono:',
+      value: `Pago #${lastResult.abonoPagoN} · +${fmtMXN(lastResult.abonoExtra)} (con IVA)`
+    });
   }
 
   for (const it of items){
     doc.setFont('helvetica','bold');
     doc.text(it.label, labelX, y);
+
     doc.setFont('helvetica','normal');
     doc.text(String(it.value ?? '—'), valueX, y);
+
     y += lineH;
   }
 
@@ -627,16 +661,24 @@ async function generarPDF(){
     '#','Fecha','Saldo inicial (sin IVA)','Abono capital','Interés','IVA','Pago','Saldo final'
   ]];
 
-  const body = lastResult.rows.map(r => ([
-    String(r.n),
-    formatDateHuman(r.fecha),
-    fmtMXN(r.saldoInicial),
-    fmtMXN(r.capital),
-    fmtMXN(r.interes),
-    fmtMXN(r.iva),
-    fmtMXN(r.pago),
-    fmtMXN(r.saldoFinal)
-  ]));
+  // Si onePage=true, comprimimos tabla (misma idea que “modo impresión”)
+  const rowsForPdf = onePage ? compressRows(lastResult.rows, 18) : lastResult.rows;
+
+  const body = rowsForPdf.map(r => {
+    if (r._ellipsis){
+      return ['…','…','…','…','…','…','…','…'];
+    }
+    return [
+      String(r.n),
+      formatDateHuman(r.fecha),
+      fmtMXN(r.saldoInicial),
+      fmtMXN(r.capital),
+      fmtMXN(r.interes),
+      fmtMXN(r.iva),
+      fmtMXN(r.pago),
+      fmtMXN(r.saldoFinal)
+    ];
+  });
 
   doc.autoTable({
     startY: y,
@@ -649,28 +691,306 @@ async function generarPDF(){
   });
 
   const legalTxt =
-  'Esta cotización es únicamente para fines informativos y de simulación. ' +
-  'La tasa de interés es fija y el cálculo puede considerar IVA sobre capital e interés (según el modo seleccionado). ' +
-  'Los importes mostrados son estimaciones basadas en los datos capturados y pueden variar por redondeos, fechas y políticas internas. ' +
-  'La presente no constituye contrato, autorización ni compromiso de otorgar financiamiento. ' +
-  'La operación queda sujeta a validación, aprobación y condiciones comerciales de MEGUESA S.A. de C.V.';
-  
+    'LEGAL: Esta cotización es únicamente para fines informativos y de simulación. ' +
+    'La tasa de interés es fija y el cálculo puede considerar IVA sobre capital e interés (según el modo seleccionado). ' +
+    'Los importes mostrados son estimaciones basadas en los datos capturados y pueden variar por redondeos, fechas y políticas internas. ' +
+    'La presente no constituye contrato, autorización ni compromiso de otorgar financiamiento. ' +
+    'La operación queda sujeta a validación, aprobación y condiciones comerciales de MEGUESA S.A. de C.V.';
+
   const pageH = doc.internal.pageSize.getHeight();
   const yLegal = Math.min(doc.lastAutoTable.finalY + 16, pageH - 44);
+
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
-  doc.text(legalTxt, left, Math.min(yLegal, doc.internal.pageSize.getHeight() - 40), { maxWidth: pageWidth - left - 40 });
+  doc.text(legalTxt, left, Math.min(yLegal, pageH - 40), { maxWidth: pageWidth - left - 40 });
 
-  
-  // Abrir en otra pestaña para previsualizar
+  // Nombre de archivo
+  const safeCliente = (cliente || 'cliente')
+    .replace(/[^\w\- ]+/g,'')
+    .trim()
+    .replace(/\s+/g,'_');
+
+  const fname = `Cotizacion_${safeCliente}_${new Date().toISOString().slice(0,10)}.pdf`;
+
+  // Salida: blob para compartir (sin abrir preview)
   const pdfBlob = doc.output('blob');
-  const pdfUrl = URL.createObjectURL(pdfBlob);
 
-  const win = window.open(pdfUrl, '_blank');
-  if (!win) window.location.href = pdfUrl;
+  if (returnBlob){
+    return { blob: pdfBlob, filename: fname };
+  }
 
-  setTimeout(() => URL.revokeObjectURL(pdfUrl), 60_000);
+  // Preview (comportamiento actual)
+  if (openPreview){
+    const pdfUrl = URL.createObjectURL(pdfBlob);
+    const win = window.open(pdfUrl, '_blank');
+    if (!win) window.location.href = pdfUrl;
+    setTimeout(() => URL.revokeObjectURL(pdfUrl), 60_000);
+  }
+
+  return null;
 }
+
+/* ===== Compartir / Impresión ===== */
+
+// Escapa texto para HTML (para modo impresión)
+function escHtml(s){
+  return String(s ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#039;');
+}
+
+// Comprime filas para que quepa “1 hoja” (si la corrida es larga)
+function compressRows(rows, maxRows = 18){
+  if (!Array.isArray(rows)) return [];
+  if (rows.length <= maxRows) return rows;
+
+  const headCount = Math.floor((maxRows - 1) / 2);
+  const tailCount = maxRows - 1 - headCount;
+
+  const head = rows.slice(0, headCount);
+  const tail = rows.slice(-tailCount);
+
+  return [...head, { _ellipsis: true }, ...tail];
+}
+
+// Texto base para WhatsApp/Email (cotización)
+function buildShareText(res){
+  const ivaModoTxt = (res.ivaModo === 'interes')
+    ? 'IVA sobre interés'
+    : 'IVA sobre (capital + interés)';
+
+  const cliente = res.cliente || '—';
+  const producto = res.producto || res.productos || res.prod || ''; // por si tu campo se llama distinto
+
+  const lines = [];
+  lines.push('COTIZACIÓN · VENTA CON FINANCIAMIENTO');
+  if (producto) lines.push(`Producto: ${producto}`);
+  lines.push(`Cliente: ${cliente}`);
+  lines.push(`Monto total (con IVA): ${fmtMXN(res.total)}`);
+  if (res.engancheIncl != null) lines.push(`Enganche: ${fmtMXN(res.engancheIncl)} (${fmtPct((res.enganchePctReal || 0) * 100)})`);
+  lines.push(`Monto a financiar (con IVA): ${fmtMXN(res.financiarIncl)}`);
+  lines.push(`Plazo: ${res.meses} meses`);
+  lines.push(`Tasa anual: ${fmtPct((res.tasaAnual || 0) * 100)} · Días/periodo: ${res.diasPeriodo || 30} (base 360)`);
+  lines.push(`IVA: ${fmtPct((res.ivaRate || 0.16) * 100)} · Modo: ${ivaModoTxt}`);
+  lines.push(`Mensualidad aprox.: ${fmtMXN(res.mensualidad)}`);
+  lines.push(`Monto final financiado: ${fmtMXN(res.totalPagos)}`);
+
+  // Si tienes leyenda legal en tu PDF/cotización, puedes incluir una línea corta aquí:
+  // lines.push('Nota: Cotización sujeta a validación y condiciones comerciales.');
+
+  return lines.join('\n');
+}
+
+// Intenta generar un PDF “1 hoja” SIN abrir pestaña: reusa tu generarPDF existente si soporta returnBlob.
+// Si tu generarPDF actual NO devuelve blob, este wrapper lo obtiene clonando el doc: te digo abajo cómo adaptarlo.
+async function generarPDFParaCompartir(){
+  // Caso 1: tu generarPDF ya soporta { openPreview:false, returnBlob:true, onePage:true }
+  // Si no, va a lanzar error y cae al catch.
+  try{
+    const out = await generarPDF({ openPreview:false, returnBlob:true, onePage:true });
+    if (out && out.blob) return out;
+  }catch(e){
+    // seguimos al fallback (sin PDF adjunto)
+  }
+  return null;
+}
+
+async function compartirCotizacion(){
+  if (!lastResult){
+    alert('Primero calcula una corrida.');
+    return;
+  }
+
+  const texto = buildShareText(lastResult);
+
+  // Intentar adjuntar PDF (si el navegador lo permite)
+  const pdfOut = await generarPDFParaCompartir();
+  if (pdfOut && pdfOut.blob){
+    const file = new File([pdfOut.blob], pdfOut.filename || 'Cotizacion.pdf', { type:'application/pdf' });
+
+    // Web Share API con archivos
+    if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })){
+      try{
+        await navigator.share({ title:'Cotización', text: texto, files: [file] });
+        return;
+      }catch(e){
+        // si cancelan o falla, seguimos al siguiente método
+      }
+    }
+  }
+
+  // Web Share API (solo texto)
+  if (navigator.share){
+    try{
+      await navigator.share({ title:'Cotización', text: texto });
+      return;
+    }catch(e){
+      // si cancelan, no hacemos nada más
+      return;
+    }
+  }
+
+  // Fallback: WhatsApp o Email
+  const usarWhatsApp = confirm('Tu navegador no soporta “Compartir”.\n\nOK = WhatsApp\nCancelar = Email');
+  if (usarWhatsApp){
+    const wa = `https://wa.me/?text=${encodeURIComponent(texto)}`;
+    window.open(wa, '_blank');
+  } else {
+    const subject = encodeURIComponent('Cotización · Venta con Financiamiento');
+    const body = encodeURIComponent(texto);
+    window.location.href = `mailto:?subject=${subject}&body=${body}`;
+  }
+}
+
+function abrirModoImpresion(){
+  if (!lastResult){
+    alert('Primero calcula una corrida.');
+    return;
+  }
+
+  const res = lastResult;
+  const ivaModoTxt = (res.ivaModo === 'interes')
+    ? 'IVA sobre interés'
+    : 'IVA sobre (capital + interés)';
+
+  // “1 hoja”: comprimimos si es muy larga
+  const rows = compressRows(res.rows || [], 18);
+
+  const detalle = [
+    ['Producto', (res.producto || res.productos || res.prod || '—')],
+    ['Cliente', (res.cliente || '—')],
+    ['Monto total (con IVA)', fmtMXN(res.total)],
+    ['Enganche', res.engancheIncl != null ? `${fmtMXN(res.engancheIncl)} (${fmtPct((res.enganchePctReal || 0) * 100)})` : '—'],
+    ['Monto a financiar (con IVA)', fmtMXN(res.financiarIncl)],
+    ['Tasa anual', fmtPct((res.tasaAnual || 0) * 100)],
+    ['Plazo (meses)', String(res.meses || '—')],
+    ['Primer pago', res.primerPago ? formatDateHuman(res.primerPago) : '—'],
+    ['IVA', `${fmtPct((res.ivaRate || 0.16) * 100)} · ${ivaModoTxt}`],
+  ];
+
+  const filasHtml = rows.map(r => {
+    if (r._ellipsis){
+      return `
+        <tr class="ellipsis">
+          <td>…</td><td>…</td><td>…</td><td>…</td><td>…</td><td>…</td><td>…</td><td>…</td>
+        </tr>
+      `;
+    }
+    return `
+      <tr>
+        <td>${escHtml(r.n)}</td>
+        <td>${escHtml(formatDateHuman(r.fecha))}</td>
+        <td style="text-align:right">${escHtml(fmtMXN(r.saldoInicial))}</td>
+        <td style="text-align:right">${escHtml(fmtMXN(r.capital))}</td>
+        <td style="text-align:right">${escHtml(fmtMXN(r.interes))}</td>
+        <td style="text-align:right">${escHtml(fmtMXN(r.iva))}</td>
+        <td style="text-align:right"><strong>${escHtml(fmtMXN(r.pago))}</strong></td>
+        <td style="text-align:right">${escHtml(fmtMXN(r.saldoFinal))}</td>
+      </tr>
+    `;
+  }).join('');
+
+  const w = window.open('', '_blank');
+  if (!w){
+    alert('El navegador bloqueó la ventana de impresión. Permite popups y vuelve a intentar.');
+    return;
+  }
+
+  const html = `
+<!doctype html>
+<html lang="es-MX">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Impresión · Cotización</title>
+  <style>
+    @page { size: letter; margin: 12mm; }
+    body{ font-family: Arial, sans-serif; color:#111; }
+    .header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
+    .title{ font-size:16px; font-weight:700; margin:0; }
+    .subtitle{ font-size:12px; margin:4px 0 0 0; color:#333; }
+    .logo{ height:70px; width:auto; object-fit:contain; }
+    .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:6px 12px; margin-top:10px; }
+    .cell{ font-size:11px; line-height:1.25; }
+    .k{ color:#555; font-weight:700; }
+    .v{ color:#111; }
+    .summary{ margin-top:10px; display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
+    .box{ border:1px solid #ddd; border-radius:8px; padding:8px; }
+    .box .k{ font-size:10px; }
+    .box .v{ font-size:12px; margin-top:4px; font-weight:700; }
+    table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:9px; }
+    th,td{ border:1px solid #ddd; padding:4px 5px; white-space:nowrap; }
+    th{ background:#f3f4f6; text-align:left; }
+    .ellipsis td{ text-align:center; color:#666; }
+    .note{ margin-top:8px; font-size:9px; color:#555; }
+    @media print{
+      .note{ display:none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <div>
+      <p class="title">VENTA CON FINANCIAMIENTO</p>
+      <p class="subtitle">Vista para impresión (1 hoja) · Puedes “Guardar como PDF”</p>
+    </div>
+    <img class="logo" src="/assets/logo.jpg" alt="Logo">
+  </div>
+
+  <div class="grid">
+    ${detalle.map(([k,v]) => `
+      <div class="cell"><span class="k">${escHtml(k)}:</span> <span class="v">${escHtml(v)}</span></div>
+    `).join('')}
+  </div>
+
+  <div class="summary">
+    <div class="box"><div class="k">Subtotal (sin IVA)</div><div class="v">${escHtml(fmtMXN(res.subtotalTotal))}</div></div>
+    <div class="box"><div class="k">IVA total</div><div class="v">${escHtml(fmtMXN(res.ivaTotal))}</div></div>
+    <div class="box"><div class="k">Mensualidad (aprox.)</div><div class="v">${escHtml(fmtMXN(res.mensualidad))}</div></div>
+    <div class="box"><div class="k">Monto a financiar</div><div class="v">${escHtml(fmtMXN(res.financiarIncl))}</div></div>
+    <div class="box"><div class="k">Monto final financiado</div><div class="v">${escHtml(fmtMXN(res.totalPagos))}</div></div>
+    <div class="box"><div class="k">Plazo</div><div class="v">${escHtml(String(res.meses))} meses</div></div>
+  </div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>#</th>
+        <th>Fecha</th>
+        <th>Saldo inicial (sin IVA)</th>
+        <th>Abono capital</th>
+        <th>Interés</th>
+        <th>IVA</th>
+        <th>Pago</th>
+        <th>Saldo final</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${filasHtml}
+    </tbody>
+  </table>
+
+  <div class="note">
+    Consejo: en el diálogo de impresión, selecciona “Guardar como PDF” y ajusta “Escala” si hiciera falta.
+  </div>
+
+  <script>
+    // Lanzar impresión automáticamente
+    setTimeout(() => window.print(), 250);
+  </script>
+</body>
+</html>
+`;
+
+  w.document.open();
+  w.document.write(html);
+  w.document.close();
+  w.focus();
+}
+
 
 /* ===== PWA ===== */
 if ('serviceWorker' in navigator){
