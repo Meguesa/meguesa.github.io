@@ -85,9 +85,9 @@ function getInputs(){
   const tasaAnual = Number(ui.tasaAnual.value || 0) / 100;
   const meses = parseInt(ui.meses.value || '0', 10);
   const primerPago = ui.primerPago.value ? new Date(ui.primerPago.value) : new Date();
-  const ivaRate = Number(ui.ivaPct.value || 16) / 100;
   const ivaModo = ui.ivaModo.value; // total | interes
-  const diasPeriodo = parseInt(ui.diasPeriodo.value || '30', 10);
+  const ivaRate = 0.16; //fijo
+  const diasPeriodo = 30; //fijo
   const cliente = (ui.cliente.value || '').trim();
 
   return { total, engPct, engMonto, tasaAnual, meses, primerPago, ivaRate, ivaModo, diasPeriodo, cliente };
