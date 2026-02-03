@@ -91,6 +91,64 @@
       </div>
     </section>
 
+//CORRIDA DESDE PAGOS
+    <section class="card">
+      <h2>Recalcular corrida desde pagos</h2>
+      <p class="muted">
+        Usa esta sección solo si ya existen pagos. No afecta la sección de arriba.
+      </p>
+    
+      <div class="grid">
+        <div class="field">
+          <label>Cliente</label>
+          <input id="cliente2" type="text" placeholder="Nombre del cliente">
+        </div>
+    
+        <div class="field">
+          <label>Monto a financiar (con IVA)</label>
+          <input id="financiarIncl2" type="number" inputmode="decimal" placeholder="Ej. 92000">
+        </div>
+    
+        <div class="field">
+          <label>Tasa anual (%)</label>
+          <input id="tasaAnual2" type="number" inputmode="decimal" placeholder="Ej. 20">
+        </div>
+    
+        <div class="field">
+          <label>Meses totales</label>
+          <input id="meses2" type="number" inputmode="numeric" placeholder="Ej. 36">
+        </div>
+    
+        <div class="field">
+          <label>Primer pago (fecha)</label>
+          <input id="primerPago2" type="date">
+        </div>
+    
+        <div class="field">
+          <label>Cálculo de IVA</label>
+          <select id="ivaModo2">
+            <option value="total">IVA sobre (capital + interés)</option>
+            <option value="interes">IVA solo sobre interés</option>
+          </select>
+        </div>
+    
+        <div class="field">
+          <label>Número de pagos hechos</label>
+          <input id="pagosHechos2" type="number" inputmode="numeric" placeholder="Ej. 5">
+        </div>
+    
+        <div class="field">
+          <label>Monto pagado acumulado (con IVA)</label>
+          <input id="montoPagado2" type="number" inputmode="decimal" placeholder="Opcional">
+        </div>
+      </div>
+    
+      <div class="actions">
+        <button id="btnCalcularPagos" class="btn primary">Calcular desde pagos</button>
+      </div>
+    </section>
+
+   //RESUMEN 
     <section class="card">
       <h2>Resumen</h2>
       <div class="summary">
