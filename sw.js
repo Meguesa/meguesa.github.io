@@ -1,4 +1,4 @@
-const CACHE_NAME = 'corrida-financiamiento-v7.1';
+const CACHE_NAME = 'corrida-financiamiento-v7.2';
 
 const ASSETS = [
   '/',
@@ -8,7 +8,7 @@ const ASSETS = [
   '/manifest.webmanifest',
   '/icons/icon-192.png',
   '/icons/icon-512.png',
-  '/assets/logo.png',
+  '/assets/logo.jpg',
   'https://cdn.jsdelivr.net/npm/jspdf@2.5.1/dist/jspdf.umd.min.js',
   'https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js'
 ];
