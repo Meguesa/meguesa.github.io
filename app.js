@@ -10,6 +10,7 @@ function addMonths(date, months){
   d.setMonth(d.getMonth() + months);
   // Ajuste si el mes resultante no tiene ese día
   if (d.getDate() < day) d.setDate(0);
+  d.setHours(12,0,0,0);
   return d;
 }
 
@@ -25,6 +26,14 @@ function formatDateHuman(d){
   const dd = new Date(d);
   return dd.toLocaleDateString('es-MX', { year:'numeric', month:'short', day:'2-digit' });
 }
+
+function parseDateLocal(iso){
+  // iso: 'YYYY-MM-DD'
+  const [y, m, d] = iso.split('-').map(Number);
+  // Mediodía local para evitar desfases por UTC/DST
+  return new Date(y, m - 1, d, 12, 0, 0, 0);
+}
+
 
 // PMT (pago por periodo) sobre monto sin IVA
 function pmt(rate, nper, pv){
@@ -84,7 +93,7 @@ function getInputs(){
   const engMonto = Number(ui.engancheMonto.value || 0);
   const tasaAnual = Number(ui.tasaAnual.value || 0) / 100;
   const meses = parseInt(ui.meses.value || '0', 10);
-  const primerPago = ui.primerPago.value ? new Date(ui.primerPago.value) : new Date();
+  const primerPago = ui.primerPago.value ? parseDateLocal(ui.primerPago.value) : new Date();
   const ivaModo = ui.ivaModo.value; // total | interes
   const ivaRate = 0.16; //fijo
   const diasPeriodo = 30; //fijo
