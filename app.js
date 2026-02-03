@@ -67,7 +67,6 @@ const ui = {
   btnLimpiar: $('btnLimpiar'),
   btnPDF: $('btnPDF'),
   btnCompartir: $('btnCompartir'),
-  btnImprimir: $('btnImprimir'),
 
   tablaBody: document.querySelector('#tabla tbody'),
 
@@ -112,7 +111,6 @@ let baseResult = null;     // corrida base (sin abono) para simular sobre ella
   if (ui.btnLimpiar) ui.btnLimpiar.addEventListener('click', (e) => { e.preventDefault(); limpiar(); });
   if (ui.btnPDF) ui.btnPDF.addEventListener('click', (e) => { e.preventDefault(); generarPDF(); });
   if (ui.btnCompartir) ui.btnCompartir.addEventListener('click', (e) => { e.preventDefault(); compartirCotizacion(); });
-  if (ui.btnImprimir) ui.btnImprimir.addEventListener('click', (e) => { e.preventDefault(); abrirModoImpresion(); });
   
   if (ui.btnSimularAbono) ui.btnSimularAbono.addEventListener('click', (e) => { e.preventDefault(); simularAbonoCapital(); });
   if (ui.btnLimpiarAbono) ui.btnLimpiarAbono.addEventListener('click', (e) => { e.preventDefault(); limpiarAbono(); });
@@ -500,7 +498,6 @@ function render(res){
 
   ui.btnPDF.disabled = false;
   if (ui.btnCompartir) ui.btnCompartir.disabled = false;
-  if (ui.btnImprimir) ui.btnImprimir.disabled = false;
 }
 
 /* ===== Limpiar ===== */
@@ -525,7 +522,6 @@ function limpiar(){
   ui.tablaBody.innerHTML = '';
   ui.btnPDF.disabled = true;
   if (ui.btnCompartir) ui.btnCompartir.disabled = true;
-  if (ui.btnImprimir) ui.btnImprimir.disabled = true;
 
   ui.resSubtotal.textContent = '—';
   ui.resIva.textContent = '—';
@@ -828,143 +824,6 @@ async function compartirCotizacion(){
     const body = encodeURIComponent(texto);
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
-}
-
-function abrirModoImpresion(){
-  if (!lastResult){
-    alert('Primero calcula una corrida.');
-    return;
-  }
-
-  const res = lastResult;
-  const ivaModoTxt = (res.ivaModo === 'interes')
-    ? 'IVA sobre interés'
-    : 'IVA sobre (capital + interés)';
-
-  // “1 hoja”: comprimimos si es muy larga
-  const rows = res.rows || [];
-
-  const detalle = [
-    ['Producto', (res.producto || res.productos || res.prod || '—')],
-    ['Cliente', (res.cliente || '—')],
-    ['Monto total (con IVA)', fmtMXN(res.total)],
-    ['Enganche', res.engancheIncl != null ? `${fmtMXN(res.engancheIncl)} (${fmtPct((res.enganchePctReal || 0) * 100)})` : '—'],
-    ['Monto a financiar (con IVA)', fmtMXN(res.financiarIncl)],
-    ['Tasa anual', fmtPct((res.tasaAnual || 0) * 100)],
-    ['Plazo (meses)', String(res.meses || '—')],
-    ['Primer pago', res.primerPago ? formatDateHuman(res.primerPago) : '—'],
-    ['IVA', `${fmtPct((res.ivaRate || 0.16) * 100)} · ${ivaModoTxt}`],
-  ];
-
-  const filasHtml = rows.map(r => `
-      <tr>
-        <td>${escHtml(r.n)}</td>
-        <td>${escHtml(formatDateHuman(r.fecha))}</td>
-        <td style="text-align:right">${escHtml(fmtMXN(r.saldoInicial))}</td>
-        <td style="text-align:right">${escHtml(fmtMXN(r.capital))}</td>
-        <td style="text-align:right">${escHtml(fmtMXN(r.interes))}</td>
-        <td style="text-align:right">${escHtml(fmtMXN(r.iva))}</td>
-        <td style="text-align:right"><strong>${escHtml(fmtMXN(r.pago))}</strong></td>
-        <td style="text-align:right">${escHtml(fmtMXN(r.saldoFinal))}</td>
-      </tr>
-    `).join('');
-
-  const w = window.open('', '_blank');
-  if (!w){
-    alert('El navegador bloqueó la ventana de impresión. Permite popups y vuelve a intentar.');
-    return;
-  }
-
-  const html = `
-<!doctype html>
-<html lang="es-MX">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>Impresión · Cotización</title>
-  <style>
-    @page { size: letter; margin: 12mm; }
-    body{ font-family: Arial, sans-serif; color:#111; }
-    .header{ display:flex; align-items:flex-start; justify-content:space-between; gap:12px; }
-    .title{ font-size:16px; font-weight:700; margin:0; }
-    .subtitle{ font-size:12px; margin:4px 0 0 0; color:#333; }
-    .logo{ height:70px; width:auto; object-fit:contain; }
-    .grid{ display:grid; grid-template-columns: 1fr 1fr; gap:6px 12px; margin-top:10px; }
-    .cell{ font-size:11px; line-height:1.25; }
-    .k{ color:#555; font-weight:700; }
-    .v{ color:#111; }
-    .summary{ margin-top:10px; display:grid; grid-template-columns: repeat(3, 1fr); gap:8px; }
-    .box{ border:1px solid #ddd; border-radius:8px; padding:8px; }
-    .box .k{ font-size:10px; }
-    .box .v{ font-size:12px; margin-top:4px; font-weight:700; }
-    table{ width:100%; border-collapse:collapse; margin-top:10px; font-size:9px; }
-    th,td{ border:1px solid #ddd; padding:4px 5px; white-space:nowrap; }
-    th{ background:#f3f4f6; text-align:left; }
-    .ellipsis td{ text-align:center; color:#666; }
-    .note{ margin-top:8px; font-size:9px; color:#555; }
-    @media print{
-      .note{ display:none; }
-    }
-  </style>
-</head>
-<body>
-  <div class="header">
-    <div>
-      <p class="title">VENTA CON FINANCIAMIENTO</p>
-      <p class="subtitle">Vista para impresión (1 hoja) · Puedes “Guardar como PDF”</p>
-    </div>
-    <img class="logo" src="/assets/logo.jpg" alt="Logo">
-  </div>
-
-  <div class="grid">
-    ${detalle.map(([k,v]) => `
-      <div class="cell"><span class="k">${escHtml(k)}:</span> <span class="v">${escHtml(v)}</span></div>
-    `).join('')}
-  </div>
-
-  <div class="summary">
-    <div class="box"><div class="k">Subtotal (sin IVA)</div><div class="v">${escHtml(fmtMXN(res.subtotalTotal))}</div></div>
-    <div class="box"><div class="k">IVA total</div><div class="v">${escHtml(fmtMXN(res.ivaTotal))}</div></div>
-    <div class="box"><div class="k">Mensualidad (aprox.)</div><div class="v">${escHtml(fmtMXN(res.mensualidad))}</div></div>
-    <div class="box"><div class="k">Monto a financiar</div><div class="v">${escHtml(fmtMXN(res.financiarIncl))}</div></div>
-    <div class="box"><div class="k">Monto final financiado</div><div class="v">${escHtml(fmtMXN(res.totalPagos))}</div></div>
-    <div class="box"><div class="k">Plazo</div><div class="v">${escHtml(String(res.meses))} meses</div></div>
-  </div>
-
-  <table>
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Fecha</th>
-        <th>Saldo inicial (sin IVA)</th>
-        <th>Abono capital</th>
-        <th>Interés</th>
-        <th>IVA</th>
-        <th>Pago</th>
-        <th>Saldo final</th>
-      </tr>
-    </thead>
-    <tbody>
-      ${filasHtml}
-    </tbody>
-  </table>
-
-  <div class="note">
-    Consejo: en el diálogo de impresión, selecciona “Guardar como PDF” y ajusta “Escala” si hiciera falta.
-  </div>
-
-  <script>
-    // Lanzar impresión automáticamente
-    setTimeout(() => window.print(), 250);
-  </script>
-</body>
-</html>
-`;
-
-  w.document.open();
-  w.document.write(html);
-  w.document.close();
-  w.focus();
 }
 
 
