@@ -669,8 +669,9 @@ async function generarPDF(opts = {}){
     styles: { font:'helvetica', fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [20,20,20] },
     theme: 'grid',
-    margin: { left, right: 40 }
+    margin: { left, right: 40, bottom: 70 } // <-- reserva espacio para LEGAL
   });
+
 
   const legalTxt =
     'LEGAL: Esta cotización es únicamente para fines informativos y de simulación. ' +
@@ -680,11 +681,13 @@ async function generarPDF(opts = {}){
     'La operación queda sujeta a validación, aprobación y condiciones comerciales de MEGUESA S.A. de C.V.';
 
   const pageH = doc.internal.pageSize.getHeight();
-  const yLegal = Math.min(doc.lastAutoTable.finalY + 16, pageH - 44);
-
+  const totalPages = doc.getNumberOfPages();
+  doc.setPage(totalPages); // <-- nos vamos a la última página
+  
+  const legalY = pageH - 40; // posición fija inferior
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
-  doc.text(legalTxt, left, Math.min(yLegal, pageH - 40), { maxWidth: pageWidth - left - 40 });
+  doc.text(legalTxt, left, legalY, { maxWidth: pageWidth - left - 40 });
 
   // Nombre de archivo
   const safeCliente = (cliente || 'cliente')
