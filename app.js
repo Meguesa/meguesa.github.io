@@ -70,7 +70,6 @@ const ui = {
   tablaBody: document.querySelector('#tabla tbody'),
 
   // Sección 2
-  abonoEfecto: $('abonoEfecto'),
   btnLimpiarAbono: $('btnLimpiarAbono'),
 
   // Resumen
@@ -410,7 +409,6 @@ function simularAbonoCapital(){
 function limpiarAbono(){
   if (ui.abonoPago) ui.abonoPago.value = '';
   if (ui.abonoExtra) ui.abonoExtra.value = '';
-  if (ui.abonoEfecto) ui.abonoEfecto.value = 'recalcular';
 
   // No borramos la corrida base; solo quitamos la simulación y regresamos a la base
   if (baseResult){
