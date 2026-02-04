@@ -264,3 +264,5 @@ tbody tr:hover{ background:#f7f7f7; }
   margin: 6px auto 0 auto;
   text-align: center;
 }
+
+.spacer-8 { height: 8px; }
