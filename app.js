@@ -614,11 +614,11 @@ async function generarPDF(opts = {}){
   const items = [
     { label: 'Producto:', value: producto },
     { label: 'Cliente:', value: cliente },
+    { label: 'Pago Inicial:', value: fmtMXN(lastResult.engancheInc) },
     { label: 'Monto a financiar (con IVA):', value: fmtMXN(lastResult.financiarIncl) },
     { label: 'Monto a financiar (sin IVA):', value: fmtMXN(lastResult.financiarSub) },
     { label: 'Tasa anual:', value: `${fmtPct(lastResult.tasaAnual * 100)} · Días/periodo: ${DIAS_PERIODO} (base 360)` },
     { label: 'Meses:', value: `${lastResult.meses} · Primer pago: ${formatDateHuman(lastResult.primerPago)}` },
-    { label: 'IVA:', value: `${fmtPct(lastResult.ivaRate * 100)} · Modo: ${ivaModoTxt}` },
     { label: 'Mensualidad aprox.:', value: fmtMXN(lastResult.mensualidad) },
     { label: 'Total (suma de pagos):', value: fmtMXN(lastResult.totalPagos) }
   ];
