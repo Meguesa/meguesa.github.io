@@ -61,7 +61,6 @@ const ui = {
   meses: $('meses'),
   primerPago: $('primerPago'),
   ivaPct: $('ivaPct'),
-  ivaModo: $('ivaModo'),
   diasPeriodo: $('diasPeriodo'),
   btnCalcular: $('btnCalcular'),
   btnLimpiar: $('btnLimpiar'),
@@ -136,7 +135,7 @@ function getInputs(){
   const tasaAnual = Number(ui.tasaAnual?.value || 0) / 100;
   const meses = parseInt(ui.meses?.value || '0', 10);
   const primerPago = ui.primerPago?.value ? parseDateLocal(ui.primerPago.value) : new Date();
-  const ivaModo = ui.ivaModo?.value || 'total';
+  const ivaModo = 'total'; // fijo: IVA sobre (capital + interés)
   const cliente = (ui.cliente?.value || '').trim();
   const producto = (ui.producto?.value || '').trim();
 
@@ -183,7 +182,7 @@ function buildScheduleBase({ pvSub, rate, meses, primerPago, ivaRate, ivaModo, p
       saldoFinal = 0;
     }
 
-    const baseIVA = (ivaModo === 'interes') ? interes : (capital + interes);
+    const baseIVA = (capital + interes); // fijo: IVA sobre (capital + interés)
     const ivaPago = round2(baseIVA * ivaRate);
     const pagoTotal = round2(capital + interes + ivaPago);
 
@@ -264,7 +263,7 @@ function simularAbonoCapital(){
 
   const pagoN = parseInt(ui.abonoPago?.value || '0', 10);
   const extraTotal = Number(ui.abonoExtra?.value || 0);
-  const efecto = ui.abonoEfecto?.value || 'acortar'; // acortar | recalcular
+  const efecto = 'recalcular'; // fijo: Mantener plazo y recalcular mensualidad
 
   const mesesBase = baseResult.mesesOriginal || baseResult.meses;
 
@@ -304,7 +303,7 @@ function simularAbonoCapital(){
       saldoFinal = 0;
     }
 
-    const baseIVA = (baseResult.ivaModo === 'interes') ? interes : (capital + interes);
+    const baseIVA = (capital + interes);
     const ivaPago = round2(baseIVA * baseResult.ivaRate);
     const pagoTotal = round2(capital + interes + ivaPago);
 
@@ -351,29 +350,6 @@ function simularAbonoCapital(){
     return;
   }
 
-  // 2) Continuación según efecto
-  if (efecto === 'acortar'){
-    // Mantener mensualidad y acortar plazo:
-    for (let n = pagoN + 1; n <= mesesBase; n++){
-      const forceClose = (n === mesesBase);
-      pushRow(n, pagoSubBase, 0, forceClose);
-      if (saldo <= 0) break;
-    }
-
-    lastResult = {
-      ...baseResult,
-      mode: 'abono',
-      abonoEfecto: efecto,
-      meses: rows.length,          // plazo resultante
-      rows,
-      totalPagos,
-      mensualidad: baseResult.mensualidad,
-      abonoPagoN: pagoN,
-      abonoExtra: extraTotal
-    };
-    render(lastResult);
-    return;
-  }
 
   // Mantener plazo y recalcular mensualidad:
   const remainingPeriods = mesesBase - pagoN;
@@ -434,7 +410,7 @@ function simularAbonoCapital(){
 function limpiarAbono(){
   if (ui.abonoPago) ui.abonoPago.value = '';
   if (ui.abonoExtra) ui.abonoExtra.value = '';
-  if (ui.abonoEfecto) ui.abonoEfecto.value = 'acortar';
+  if (ui.abonoEfecto) ui.abonoEfecto.value = 'recalcular';
 
   // No borramos la corrida base; solo quitamos la simulación y regresamos a la base
   if (baseResult){
@@ -462,12 +438,8 @@ function render(res){
   ui.resIva.textContent = fmtMXN(res.ivaTotal);
 
   if (res.mode === 'abono'){
-    const efectoTxt = (res.abonoEfecto === 'recalcular')
-      ? `Mantener plazo · Nueva mensualidad: ${fmtMXN(res.mensualidad)}`
-      : `Mantener mensualidad · Plazo resultante: ${res.meses} meses`;
-  
-    ui.resEnganche.textContent = 
-      `Abono en pago #${res.abonoPagoN}: +${fmtMXN(res.abonoExtra)} · Plazo resultante: ${res.meses} meses`;
+    ui.resEnganche.textContent =
+      `Abono en pago #${res.abonoPagoN}: +${fmtMXN(res.abonoExtra)} · Nueva mensualidad: ${fmtMXN(res.mensualidad)}`;
   } else {
     ui.resEnganche.textContent = `${fmtMXN(res.engancheIncl)} (${fmtPct(res.enganchePctReal*100)})`;
   }
@@ -511,13 +483,14 @@ function limpiar(){
   ui.tasaAnual.value = '';
   ui.meses.value = '';
   ui.ivaPct.value = String(IVA_RATE * 100);
-  ui.ivaModo.value = 'total';
+  // (ya no hay ui.ivaModo)
   ui.diasPeriodo.value = String(DIAS_PERIODO);
+
 
   // Sección 2
   if (ui.abonoPago) ui.abonoPago.value = '';
   if (ui.abonoExtra) ui.abonoExtra.value = '';
-  if (ui.abonoEfecto) ui.abonoEfecto.value = 'acortar';
+  if (ui.abonoEfecto) ui.abonoEfecto.value = 'recalcular';
 
   ui.tablaBody.innerHTML = '';
   ui.btnPDF.disabled = true;
