@@ -7,6 +7,10 @@ const fmtPct = (n) => `${(n || 0).toFixed(2)}%`;
 
 function round2(n){ return Math.round((n + Number.EPSILON) * 100) / 100; }
 
+// ✅ Sumas exactas (sin redondeo acumulado): sumar en centavos
+function toCents(n){ return Math.round((Number(n) || 0) * 100); }
+function fromCents(c){ return (Number(c) || 0) / 100; }
+
 function parseDateLocal(iso){
   const [y, m, d] = iso.split('-').map(Number);
   return new Date(y, m - 1, d, 12, 0, 0, 0);
@@ -45,6 +49,16 @@ function pmt(rate, nper, pv){
   if (nper <= 0) return 0;
   if (rate === 0) return pv / nper;
   return (pv * rate) / (1 - Math.pow(1 + rate, -nper));
+}
+
+// ✅ Obtener tamaño natural de una imagen (para NO deformar firma en PDF)
+function getImageSize(dataUrl){
+  return new Promise((resolve, reject) => {
+    const img = new Image();
+    img.onload = () => resolve({ w: img.naturalWidth || img.width, h: img.naturalHeight || img.height });
+    img.onerror = reject;
+    img.src = dataUrl;
+  });
 }
 
 /* ===== UI refs ===== */
@@ -273,10 +287,11 @@ function validar(inp){
   return errs;
 }
 
+// ✅ totalPagos sin redondeo acumulado (centavos)
 function buildScheduleBase({ pvSub, rate, meses, primerPago, ivaRate, pagoSub }){
   let saldo = pvSub;
   const rows = [];
-  let totalPagos = 0;
+  let totalPagosC = 0; // centavos
 
   for (let k = 1; k <= meses; k++){
     const fecha = addMonths(primerPago, k - 1);
@@ -297,11 +312,11 @@ function buildScheduleBase({ pvSub, rate, meses, primerPago, ivaRate, pagoSub })
 
     rows.push({ n:k, fecha, saldoInicial:saldo, capital, interes, iva:ivaPago, pago:pagoTotal, saldoFinal });
 
-    totalPagos = round2(totalPagos + pagoTotal);
+    totalPagosC += toCents(pagoTotal);   // ✅ suma exacta
     saldo = saldoFinal;
   }
 
-  return { rows, totalPagos };
+  return { rows, totalPagos: fromCents(totalPagosC) };
 }
 
 function calcular(){
@@ -385,7 +400,7 @@ function simularAbonoCapital(){
 
   let saldo = baseResult.financiarSub;
   const rows = [];
-  let totalPagos = 0;
+  let totalPagosC = 0; // ✅ centavos
 
   function pushRow(n, pagoSub, extraCapSub, forceClose){
     const fecha = addMonths(baseResult.primerPago, n - 1);
@@ -415,7 +430,7 @@ function simularAbonoCapital(){
       abonoExtraTotal: (n === pagoN) ? extraTotal : 0
     });
 
-    totalPagos = round2(totalPagos + pagoTotal);
+    totalPagosC += toCents(pagoTotal); // ✅ suma exacta
     saldo = saldoFinal;
   }
 
@@ -433,7 +448,7 @@ function simularAbonoCapital(){
       mode: 'abono',
       meses: rows.length,
       rows,
-      totalPagos,
+      totalPagos: fromCents(totalPagosC),
       mensualidad: baseResult.mensualidad,
       abonoPagoN: pagoN,
       abonoExtra: extraTotal
@@ -450,7 +465,7 @@ function simularAbonoCapital(){
       mode: 'abono',
       meses: rows.length,
       rows,
-      totalPagos,
+      totalPagos: fromCents(totalPagosC),
       mensualidad: baseResult.mensualidad,
       abonoPagoN: pagoN,
       abonoExtra: extraTotal
@@ -477,7 +492,7 @@ function simularAbonoCapital(){
     mode: 'abono',
     meses: rows.length,
     rows,
-    totalPagos,
+    totalPagos: fromCents(totalPagosC),
     pagoSubNuevo,
     mensualidad: mensualidadNueva,
     mensualidadAnterior: baseResult.mensualidad,
@@ -626,8 +641,12 @@ async function generarPDF(opts = {}){
   const cliente = lastResult.cliente || '—';
   const producto = lastResult.producto || '—';
 
-  // ===== D1) AQUÍ se captura la firma =====
+  // ===== Firma =====
   const firmaUrl = getFirmaDataUrl(); // null si no firmaron
+  let firmaSize = null;
+  if (firmaUrl){
+    try{ firmaSize = await getImageSize(firmaUrl); }catch(e){ firmaSize = null; }
+  }
 
   const left = 40;
   let y = 48;
@@ -691,14 +710,18 @@ async function generarPDF(opts = {}){
 
   const rows = lastResult.rows || [];
 
-  let sumInteres = 0;
-  let sumIva = 0;
-  let sumPago = 0;
+  // ✅ Totales exactos (centavos), sin round2 acumulado
+  let sumInteresC = 0;
+  let sumIvaC = 0;
+  let sumPagoC = 0;
   for (const r of rows){
-    sumInteres = round2(sumInteres + (r.interes || 0));
-    sumIva = round2(sumIva + (r.iva || 0));
-    sumPago = round2(sumPago + (r.pago || 0));
+    sumInteresC += toCents(r.interes);
+    sumIvaC += toCents(r.iva);
+    sumPagoC += toCents(r.pago);
   }
+  const sumInteres = fromCents(sumInteresC);
+  const sumIva = fromCents(sumIvaC);
+  const sumPago = fromCents(sumPagoC);
 
   const body = rows.map(r => ([
     String(r.n),
@@ -733,7 +756,7 @@ async function generarPDF(opts = {}){
     margin: { left, right: 40, bottom: 140 } // reserva para firma + legal
   });
 
-  // ===== D2) Función que dibuja la firma =====
+  // ===== Firma en PDF (SIN deformar) =====
   function drawFirmaPDF(yTop){
     const lineW = 260;
     const x1 = (pageWidth - lineW) / 2;
@@ -743,16 +766,29 @@ async function generarPDF(opts = {}){
     doc.setFontSize(9);
     doc.text('Firma del Cliente', pageWidth/2, yTop, { align:'center' });
 
-    const imgH = 44;
+    const boxW = lineW;
+    const boxH = 44;
     const imgY = yTop + 10;
 
     if (firmaUrl){
       try{
-        doc.addImage(firmaUrl, 'PNG', x1, imgY, lineW, imgH);
+        if (firmaSize && firmaSize.w > 0 && firmaSize.h > 0){
+          const scale = Math.min(boxW / firmaSize.w, boxH / firmaSize.h);
+          const drawW = firmaSize.w * scale;
+          const drawH = firmaSize.h * scale;
+
+          const drawX = (pageWidth / 2) - (drawW / 2);   // centrado
+          const drawY = imgY + (boxH - drawH) / 2;       // centrado vertical
+
+          doc.addImage(firmaUrl, 'PNG', drawX, drawY, drawW, drawH);
+        } else {
+          // fallback si no se pudo medir
+          doc.addImage(firmaUrl, 'PNG', x1, imgY, boxW, boxH);
+        }
       }catch(e){}
     }
 
-    const yLine = imgY + imgH + 6;
+    const yLine = imgY + boxH + 6;
     doc.line(x1, yLine, x2, yLine);
 
     doc.setFontSize(9);
@@ -769,7 +805,6 @@ async function generarPDF(opts = {}){
     'La presente no constituye contrato, autorización ni compromiso de otorgar financiamiento. ' +
     'La operación queda sujeta a validación, aprobación y condiciones comerciales de MEGUESA S.A. de C.V.';
 
-  // ===== D3 + D4) Colocar firma arriba del LEGAL, y si no cabe, crear página =====
   const totalPages = doc.getNumberOfPages();
   doc.setPage(totalPages);
 
@@ -783,7 +818,7 @@ async function generarPDF(opts = {}){
   const bottomPadding = 18;
   const legalTopY = pageH - bottomPadding - legalH;
 
-  const sigBlockH = 95; // “aprox”
+  const sigBlockH = 95; // aprox
   let sigY = legalTopY - 12 - sigBlockH;
 
   const lastTableY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY : 0;
@@ -793,15 +828,12 @@ async function generarPDF(opts = {}){
     doc.addPage();
     const newTotal = doc.getNumberOfPages();
     doc.setPage(newTotal);
-
-    // recalcular posiciones en nueva página (legal queda igual abajo)
+    // recalcular sigY para nueva página (legal queda igual abajo)
     sigY = legalTopY - 12 - sigBlockH;
   }
 
-  // Dibuja firma
+  // Dibuja firma y legal
   drawFirmaPDF(sigY);
-
-  // Dibuja legal abajo
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
   doc.text(legalLines, left, legalTopY);
