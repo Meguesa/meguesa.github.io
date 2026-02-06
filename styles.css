@@ -266,3 +266,36 @@ tbody tr:hover{ background:#f7f7f7; }
 }
 
 .spacer-8 { height: 8px; }
+
+
+/* ===== Firma (canvas) ===== */
+.sig-wrap{
+  margin-top: 14px;
+}
+
+.sig-label{
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.sig-box{
+  border: 1px solid #e6e6e6;
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+
+.sig-canvas{
+  width: 100%;
+  height: 170px;
+  display: block;
+  touch-action: none; /* crítico para que dibuje en móvil */
+}
+
+.sig-actions{
+  margin-top: 10px;
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
