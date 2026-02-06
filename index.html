@@ -155,10 +155,25 @@
         </div>
       </div>
 
+      <div class="sig-wrap">
+        <div class="sig-label">Firma del Cliente (opcional)</div>
+      
+        <div class="sig-box">
+          <canvas id="firmaCanvas" class="sig-canvas"></canvas>
+        </div>
+      
+        <div class="sig-actions">
+          <button id="btnLimpiarFirma" class="btn" type="button">Limpiar firma</button>
+        </div>
+      
+        <small class="muted">La firma se incluirá en el PDF al generar o compartir.</small>
+      </div>
+
       <div class="actions">
         <button id="btnPDF" class="btn primary" disabled>Generar PDF</button>
         <button id="btnCompartir" class="btn primary" disabled>Compartir</button>
       </div>
+      
     </section>
 
     <section class="card">
