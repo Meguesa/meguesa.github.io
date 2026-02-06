@@ -1,4 +1,4 @@
-const CACHE_NAME = 'corrida-financiamiento-v9.4';
+const CACHE_NAME = 'corrida-financiamiento-v9.5';
 
 const ASSETS = [
   '/',
