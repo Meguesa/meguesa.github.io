@@ -522,7 +522,7 @@ async function generarPDF(opts = {}){
   // opts:
   // - openPreview: true/false (default true)
   // - returnBlob: true/false (default false)
-  // - onePage: true/false (default false) -> comprime tabla para que quepa mejor
+  // - onePage: true/false (default false) -> (si lo usas) comprime tabla
   const {
     openPreview = true,
     returnBlob = false,
@@ -539,6 +539,8 @@ async function generarPDF(opts = {}){
   try{ logoDataUrl = await loadImageAsDataURL('/assets/logo.jpg'); }catch(e){ logoDataUrl = null; }
 
   const pageWidth = doc.internal.pageSize.getWidth();
+  const pageH = doc.internal.pageSize.getHeight();
+
   if (logoDataUrl){
     const logoW = 200;
     const logoH = 132;
@@ -574,10 +576,7 @@ async function generarPDF(opts = {}){
 
   y += (subtitulo ? 56 : 42);
 
-  const ivaModoTxt = (lastResult.ivaModo === 'interes')
-    ? 'IVA sobre interés'
-    : 'IVA sobre (capital + interés)';
-
+  // --- Datos (tabla de “labels/values”) ---
   const labelX = left;
   const valueX = left + 150;
   const lineH = 14;
@@ -611,14 +610,22 @@ async function generarPDF(opts = {}){
     y += lineH;
   }
 
-  y += 8;
+  y += 10;
 
+  // --- Tabla corrida ---
   const head = [[
     '#','Fecha','Saldo inicial (sin IVA)','Abono capital','Interés','IVA','Pago','Saldo final'
   ]];
 
-  // Si onePage=true, comprimimos tabla (misma idea que “modo impresión”)
-  const body = (lastResult.rows || []).map(r => ([
+  const rows = Array.isArray(lastResult.rows) ? lastResult.rows : [];
+
+  // Totales (usamos lo ya calculado y mostrado)
+  const totalInteres = round2(rows.reduce((a,r) => a + (Number(r.interes)||0), 0));
+  const totalIVA     = round2(rows.reduce((a,r) => a + (Number(r.iva)||0), 0));
+  const totalPago    = round2(rows.reduce((a,r) => a + (Number(r.pago)||0), 0));
+
+  // Body normal
+  let body = rows.map(r => ([
     String(r.n),
     formatDateHuman(r.fecha),
     fmtMXN(r.saldoInicial),
@@ -629,6 +636,20 @@ async function generarPDF(opts = {}){
     fmtMXN(r.saldoFinal)
   ]));
 
+  // Si estabas usando “onePage” para comprimir, aquí podrías aplicar tu compresión.
+  // (No la activo automáticamente para no “resumir”.)
+  // if (onePage) body = compressRowsForPdf(body);
+
+  // Renglón de TOTALES al final (colocamos totales en Interés/IVA/Pago)
+  const totalsRow = [
+    '', 'TOTALES', '', '',
+    fmtMXN(totalInteres),
+    fmtMXN(totalIVA),
+    fmtMXN(totalPago),
+    ''
+  ];
+  body.push(totalsRow);
+
   doc.autoTable({
     startY: y,
     head,
@@ -636,25 +657,99 @@ async function generarPDF(opts = {}){
     styles: { font:'helvetica', fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [20,20,20] },
     theme: 'grid',
-    margin: { left, right: 40, bottom: 70 } // <-- reserva espacio para LEGAL
+    margin: { left, right: 40, bottom: 90 }, // reserva para firma + legal
+
+    // Estilo especial para la última fila (totales)
+    didParseCell: function(data){
+      const isTotals = (data.section === 'body' && data.row.index === body.length - 1);
+      if (isTotals){
+        data.cell.styles.fontStyle = 'bold';
+        // opcional: alineación a la derecha en totales numéricos
+        if ([4,5,6].includes(data.column.index)) data.cell.styles.halign = 'right';
+      }
+    }
   });
 
-
+  // ===== Firma + Legal en la última página =====
   const legalTxt =
     'LEGAL: Esta cotización es únicamente para fines informativos y de simulación. ' +
-    'La tasa de interés es fija y el cálculo puede considerar IVA sobre capital e interés (según el modo seleccionado). ' +
+    'La tasa de interés es fija y el cálculo considera IVA sobre capital e interés. ' +
     'Los importes mostrados son estimaciones basadas en los datos capturados y pueden variar por redondeos, fechas y políticas internas. ' +
     'La presente no constituye contrato, autorización ni compromiso de otorgar financiamiento. ' +
     'La operación queda sujeta a validación, aprobación y condiciones comerciales de MEGUESA S.A. de C.V.';
 
-  const pageH = doc.internal.pageSize.getHeight();
-  const totalPages = doc.getNumberOfPages();
-  doc.setPage(totalPages); // <-- nos vamos a la última página
-  
-  const legalY = pageH - 40; // posición fija inferior
+  // Nos movemos a la última página (por si la tabla generó varias)
+  let totalPages = doc.getNumberOfPages();
+  doc.setPage(totalPages);
+
+  // Si la tabla terminó muy abajo en la última página, mandamos firma+legal a una nueva página
+  // (doc.lastAutoTable.finalY aplica a la página donde terminó la tabla)
+  const lastTableY = doc.lastAutoTable?.finalY ?? 0;
+
+  // Preparamos cálculo de altura del legal (para colocarlo bien)
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
-  doc.text(legalTxt, left, legalY, { maxWidth: pageWidth - left - 40 });
+  const legalLines = doc.splitTextToSize(legalTxt, pageWidth - left - 40);
+  const legalLineH = 10; // aprox para font 8
+  const legalHeight = legalLines.length * legalLineH;
+
+  // Legal irá “pegado” abajo pero sin salirse
+  const bottomPad = 24;
+  const legalStartY = pageH - bottomPad - legalHeight;
+
+  // Firma arriba del legal
+  const sigBlockH = 55; // espacio firma (línea + nombre)
+  const sigY = legalStartY - sigBlockH;
+
+  // ¿Cabe en la página donde terminó la tabla?
+  // si no cabe, agregamos nueva página y recalculamos posiciones
+  if (sigY < lastTableY + 25){
+    doc.addPage();
+    totalPages = doc.getNumberOfPages();
+    doc.setPage(totalPages);
+
+    // recalcular en página nueva
+    const legalStartY2 = pageH - bottomPad - legalHeight;
+    const sigY2 = legalStartY2 - sigBlockH;
+
+    // Firma (centrada)
+    const lineW = 260;
+    const x1 = (pageWidth - lineW) / 2;
+    const x2 = x1 + lineW;
+
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    doc.text('Firma del Cliente', pageWidth/2, sigY2, { align:'center' });
+
+    doc.line(x1, sigY2 + 18, x2, sigY2 + 18);
+
+    doc.setFontSize(9);
+    doc.text(cliente, pageWidth/2, sigY2 + 34, { align:'center' });
+
+    // Legal
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8);
+    doc.text(legalLines, left, legalStartY2);
+  } else {
+    // Firma en la misma última página
+    const lineW = 260;
+    const x1 = (pageWidth - lineW) / 2;
+    const x2 = x1 + lineW;
+
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    doc.text('Firma del Cliente', pageWidth/2, sigY, { align:'center' });
+
+    doc.line(x1, sigY + 18, x2, sigY + 18);
+
+    doc.setFontSize(9);
+    doc.text(cliente, pageWidth/2, sigY + 34, { align:'center' });
+
+    // Legal
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(8);
+    doc.text(legalLines, left, legalStartY);
+  }
 
   // Nombre de archivo
   const safeCliente = (cliente || 'cliente')
@@ -664,14 +759,13 @@ async function generarPDF(opts = {}){
 
   const fname = `Cotizacion_${safeCliente}_${new Date().toISOString().slice(0,10)}.pdf`;
 
-  // Salida: blob para compartir (sin abrir preview)
+  // Salida: blob
   const pdfBlob = doc.output('blob');
 
   if (returnBlob){
     return { blob: pdfBlob, filename: fname };
   }
 
-  // Preview (comportamiento actual)
   if (openPreview){
     const pdfUrl = URL.createObjectURL(pdfBlob);
     const win = window.open(pdfUrl, '_blank');
