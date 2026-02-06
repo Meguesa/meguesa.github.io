@@ -1,4 +1,4 @@
-/* ===== Helpers ===== */
+/* ===== Helpers / Constantes ===== */
 const IVA_RATE = 0.16;     // fijo
 const DIAS_PERIODO = 30;   // fijo
 
@@ -69,7 +69,14 @@ const ui = {
 
   tablaBody: document.querySelector('#tabla tbody'),
 
-  // Sección 2
+  // Acordeón sección 2
+  togglePagos: $('togglePagos'),
+  panelPagos: $('panelPagos'),
+
+  // Sección 2 (Abono a capital)
+  abonoPago: $('abonoPago'),
+  abonoExtra: $('abonoExtra'),
+  btnSimularAbono: $('btnSimularAbono'),
   btnLimpiarAbono: $('btnLimpiarAbono'),
 
   // Resumen
@@ -80,18 +87,119 @@ const ui = {
   resMensualidad: $('resMensualidad'),
   resTotalFin: $('resTotalFin'),
 
-  // Acordeón sección 2
-  togglePagos: $('togglePagos'),
-  panelPagos: $('panelPagos'),
-
-  // Sección 2 (Abono a capital)
-  abonoPago: $('abonoPago'),
-  abonoExtra: $('abonoExtra'),
-  btnSimularAbono: $('btnSimularAbono'),
+  // Firma (canvas)
+  firmaCanvas: $('firmaCanvas'),
+  btnLimpiarFirma: $('btnLimpiarFirma'),
 };
 
 let lastResult = null;     // lo que se está mostrando
 let baseResult = null;     // corrida base (sin abono) para simular sobre ella
+
+/* ===== Firma (canvas) ===== */
+const firmaPad = {
+  canvas: null,
+  ctx: null,
+  drawing: false,
+  hasInk: false,
+};
+
+function initFirmaPad(){
+  if (!ui.firmaCanvas) return;
+
+  firmaPad.canvas = ui.firmaCanvas;
+
+  const resize = () => {
+    const canvas = firmaPad.canvas;
+    const rect = canvas.getBoundingClientRect();
+    const ratio = Math.max(window.devicePixelRatio || 1, 1);
+
+    // conservar firma si ya había
+    const prev = firmaPad.hasInk ? canvas.toDataURL('image/png') : null;
+
+    canvas.width = Math.round(rect.width * ratio);
+    canvas.height = Math.round(rect.height * ratio);
+
+    const ctx = canvas.getContext('2d');
+    ctx.setTransform(ratio, 0, 0, ratio, 0, 0);
+
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+    ctx.lineWidth = 2.2;
+    ctx.strokeStyle = '#111';
+
+    firmaPad.ctx = ctx;
+
+    if (prev){
+      const img = new Image();
+      img.onload = () => {
+        ctx.clearRect(0, 0, rect.width, rect.height);
+        ctx.drawImage(img, 0, 0, rect.width, rect.height);
+      };
+      img.src = prev;
+    } else {
+      ctx.clearRect(0, 0, rect.width, rect.height);
+    }
+  };
+
+  resize();
+  window.addEventListener('resize', resize);
+
+  const getPos = (ev) => {
+    const rect = firmaPad.canvas.getBoundingClientRect();
+    return { x: ev.clientX - rect.left, y: ev.clientY - rect.top };
+  };
+
+  const onDown = (ev) => {
+    ev.preventDefault();
+    firmaPad.drawing = true;
+    firmaPad.canvas.setPointerCapture?.(ev.pointerId);
+
+    const p = getPos(ev);
+    firmaPad.ctx.beginPath();
+    firmaPad.ctx.moveTo(p.x, p.y);
+  };
+
+  const onMove = (ev) => {
+    if (!firmaPad.drawing) return;
+    ev.preventDefault();
+
+    const p = getPos(ev);
+    firmaPad.ctx.lineTo(p.x, p.y);
+    firmaPad.ctx.stroke();
+
+    firmaPad.hasInk = true;
+  };
+
+  const onUp = (ev) => {
+    if (!firmaPad.drawing) return;
+    ev.preventDefault();
+    firmaPad.drawing = false;
+  };
+
+  firmaPad.canvas.addEventListener('pointerdown', onDown);
+  firmaPad.canvas.addEventListener('pointermove', onMove);
+  firmaPad.canvas.addEventListener('pointerup', onUp);
+  firmaPad.canvas.addEventListener('pointercancel', onUp);
+
+  if (ui.btnLimpiarFirma){
+    ui.btnLimpiarFirma.addEventListener('click', (e) => {
+      e.preventDefault();
+      limpiarFirma();
+    });
+  }
+}
+
+function limpiarFirma(){
+  if (!firmaPad.canvas || !firmaPad.ctx) return;
+  const rect = firmaPad.canvas.getBoundingClientRect();
+  firmaPad.ctx.clearRect(0, 0, rect.width, rect.height);
+  firmaPad.hasInk = false;
+}
+
+function getFirmaDataUrl(){
+  if (!firmaPad.canvas || !firmaPad.hasInk) return null;
+  return firmaPad.canvas.toDataURL('image/png');
+}
 
 /* ===== Defaults ===== */
 (function init(){
@@ -109,11 +217,11 @@ let baseResult = null;     // corrida base (sin abono) para simular sobre ella
   if (ui.btnLimpiar) ui.btnLimpiar.addEventListener('click', (e) => { e.preventDefault(); limpiar(); });
   if (ui.btnPDF) ui.btnPDF.addEventListener('click', (e) => { e.preventDefault(); generarPDF(); });
   if (ui.btnCompartir) ui.btnCompartir.addEventListener('click', (e) => { e.preventDefault(); compartirCotizacion(); });
-  
+
   if (ui.btnSimularAbono) ui.btnSimularAbono.addEventListener('click', (e) => { e.preventDefault(); simularAbonoCapital(); });
   if (ui.btnLimpiarAbono) ui.btnLimpiarAbono.addEventListener('click', (e) => { e.preventDefault(); limpiarAbono(); });
 
-  // Acordeón: forzar cerrado al iniciar
+  // Acordeón: cerrado al iniciar
   if (ui.togglePagos && ui.panelPagos){
     ui.togglePagos.setAttribute('aria-expanded', 'false');
     ui.panelPagos.hidden = true;
@@ -124,6 +232,9 @@ let baseResult = null;     // corrida base (sin abono) para simular sobre ella
       ui.panelPagos.hidden = isOpen;
     });
   }
+
+  // Firma
+  initFirmaPad();
 })();
 
 /* ===== Core (Sección 1) ===== */
@@ -134,7 +245,6 @@ function getInputs(){
   const tasaAnual = Number(ui.tasaAnual?.value || 0) / 100;
   const meses = parseInt(ui.meses?.value || '0', 10);
   const primerPago = ui.primerPago?.value ? parseDateLocal(ui.primerPago.value) : new Date();
-  const ivaModo = 'total'; // fijo: IVA sobre (capital + interés)
   const cliente = (ui.cliente?.value || '').trim();
   const producto = (ui.producto?.value || '').trim();
 
@@ -148,7 +258,7 @@ function getInputs(){
     meses,
     primerPago,
     ivaRate: IVA_RATE,
-    ivaModo,
+    ivaModo: 'total', // fijo
     diasPeriodo: DIAS_PERIODO
   };
 }
@@ -158,12 +268,12 @@ function validar(inp){
   if (!(inp.total > 0)) errs.push('Captura un monto total mayor a 0.');
   if (!(inp.meses > 0)) errs.push('Captura meses (mayor a 0).');
   if (inp.tasaAnual < 0) errs.push('Tasa anual inválida.');
-  if (inp.engMonto < 0) errs.push('Enganche inválido.');
-  if (inp.engPct < 0) errs.push('% enganche inválido.');
+  if (inp.engMonto < 0) errs.push('Pago Inicial inválido.');
+  if (inp.engPct < 0) errs.push('% Pago Inicial inválido.');
   return errs;
 }
 
-function buildScheduleBase({ pvSub, rate, meses, primerPago, ivaRate, ivaModo, pagoSub }){
+function buildScheduleBase({ pvSub, rate, meses, primerPago, ivaRate, pagoSub }){
   let saldo = pvSub;
   const rows = [];
   let totalPagos = 0;
@@ -199,6 +309,7 @@ function calcular(){
   const errs = validar(inp);
   if (errs.length){ alert(errs.join('\n')); return; }
 
+  // Pago Inicial: si hay monto, manda. Si no, usa porcentaje
   let engancheIncl = inp.engMonto > 0 ? inp.engMonto : inp.total * inp.engPct;
   engancheIncl = Math.min(engancheIncl, inp.total);
   engancheIncl = round2(engancheIncl);
@@ -223,7 +334,6 @@ function calcular(){
     meses: inp.meses,
     primerPago: inp.primerPago,
     ivaRate: inp.ivaRate,
-    ivaModo: inp.ivaModo,
     pagoSub
   });
 
@@ -247,13 +357,11 @@ function calcular(){
     rows
   };
 
-  // Guardamos la corrida base para simulaciones de abono
   baseResult = lastResult;
-
   render(lastResult);
 }
 
-/* ===== Sección 2: Abono a capital (simulación) ===== */
+/* ===== Sección 2: Abono a capital (solo mantener plazo y recalcular mensualidad) ===== */
 function simularAbonoCapital(){
   if (!baseResult){
     alert('Primero calcula una corrida en la sección "Datos".');
@@ -262,8 +370,6 @@ function simularAbonoCapital(){
 
   const pagoN = parseInt(ui.abonoPago?.value || '0', 10);
   const extraTotal = Number(ui.abonoExtra?.value || 0);
-  const efecto = 'recalcular'; // fijo: Mantener plazo y recalcular mensualidad
-
   const mesesBase = baseResult.mesesOriginal || baseResult.meses;
 
   const errs = [];
@@ -271,12 +377,8 @@ function simularAbonoCapital(){
   if (!(extraTotal > 0)) errs.push('Captura un abono adicional mayor a 0.');
   if (errs.length){ alert(errs.join('\n')); return; }
 
-  // Extra capturado como “lo que paga el cliente (con IVA)”
-  // - Si IVA es “total”, el extra incluye IVA -> lo convertimos a base sin IVA para capital
-  // - Si IVA es “interes”, el extra se considera capital (sin IVA)
-  const extraCapitalSub = (baseResult.ivaModo === 'total')
-    ? round2(extraTotal / (1 + baseResult.ivaRate))
-    : round2(extraTotal);
+  // Abono extra capturado como “con IVA” -> convertir a “sin IVA” para capital
+  const extraCapitalSub = round2(extraTotal / (1 + baseResult.ivaRate));
 
   const rate = baseResult.rate;
   const pagoSubBase = baseResult.pagoSub;
@@ -285,7 +387,6 @@ function simularAbonoCapital(){
   const rows = [];
   let totalPagos = 0;
 
-  // Helper: calcula una fila y regresa saldoFinal
   function pushRow(n, pagoSub, extraCapSub, forceClose){
     const fecha = addMonths(baseResult.primerPago, n - 1);
 
@@ -296,7 +397,6 @@ function simularAbonoCapital(){
 
     let saldoFinal = round2(saldo - capital);
 
-    // si es el último periodo planificado, cerramos por redondeo
     if (forceClose && saldoFinal !== 0){
       capital = round2(capital + saldoFinal);
       saldoFinal = 0;
@@ -307,12 +407,9 @@ function simularAbonoCapital(){
     const pagoTotal = round2(capital + interes + ivaPago);
 
     rows.push({
-      n,
-      fecha,
+      n, fecha,
       saldoInicial: saldo,
-      capital,
-      interes,
-      iva: ivaPago,
+      capital, interes, iva: ivaPago,
       pago: pagoTotal,
       saldoFinal,
       abonoExtraTotal: (n === pagoN) ? extraTotal : 0
@@ -322,22 +419,18 @@ function simularAbonoCapital(){
     saldo = saldoFinal;
   }
 
-  // 1) Construimos del pago 1 al pagoN (aplicando abono en pagoN)
+  // 1) De pago 1 a pagoN (aplicando el abono en pagoN)
   for (let n = 1; n <= pagoN; n++){
     const extraThis = (n === pagoN) ? extraCapitalSub : 0;
-    // si pagoN también es el último del plazo original, cerramos
     const forceClose = (n === mesesBase);
     pushRow(n, pagoSubBase, extraThis, forceClose);
-
-    if (saldo <= 0) break; // liquidación anticipada
+    if (saldo <= 0) break;
   }
 
-  // Si se liquidó, ya terminamos
   if (saldo <= 0){
     lastResult = {
       ...baseResult,
       mode: 'abono',
-      abonoEfecto: efecto,
       meses: rows.length,
       rows,
       totalPagos,
@@ -349,14 +442,12 @@ function simularAbonoCapital(){
     return;
   }
 
-
-  // Mantener plazo y recalcular mensualidad:
+  // 2) Mantener plazo y recalcular mensualidad desde el siguiente pago
   const remainingPeriods = mesesBase - pagoN;
   if (remainingPeriods <= 0){
     lastResult = {
       ...baseResult,
       mode: 'abono',
-      abonoEfecto: efecto,
       meses: rows.length,
       rows,
       totalPagos,
@@ -368,7 +459,6 @@ function simularAbonoCapital(){
     return;
   }
 
-  // Nuevo pagoSub (sin IVA) desde el siguiente periodo
   let pagoSubNuevo = pmt(rate, remainingPeriods, saldo);
   pagoSubNuevo = round2(pagoSubNuevo);
 
@@ -379,15 +469,13 @@ function simularAbonoCapital(){
     if (saldo <= 0) break;
   }
 
-  // Mensualidad a mostrar: el pago del siguiente periodo (si existe)
-  const idxNext = pagoN; // index 0-based del pagoN+1
+  const idxNext = pagoN; // pagoN+1 en índice 0-based
   const mensualidadNueva = rows[idxNext] ? rows[idxNext].pago : baseResult.mensualidad;
 
   lastResult = {
     ...baseResult,
     mode: 'abono',
-    abonoEfecto: efecto,
-    meses: rows.length,          // si liquidó antes, se acorta
+    meses: rows.length,
     rows,
     totalPagos,
     pagoSubNuevo,
@@ -399,7 +487,7 @@ function simularAbonoCapital(){
 
   render(lastResult);
 
-  // Si el acordeón estaba cerrado, lo abrimos para que vean qué corrieron
+  // abre el acordeón si estaba cerrado
   if (ui.togglePagos && ui.panelPagos){
     ui.togglePagos.setAttribute('aria-expanded', 'true');
     ui.panelPagos.hidden = false;
@@ -410,14 +498,13 @@ function limpiarAbono(){
   if (ui.abonoPago) ui.abonoPago.value = '';
   if (ui.abonoExtra) ui.abonoExtra.value = '';
 
-  // No borramos la corrida base; solo quitamos la simulación y regresamos a la base
   if (baseResult){
     lastResult = baseResult;
     render(lastResult);
   } else {
-    // Si nunca calcularon la base, solo deshabilita PDF y limpia tabla/resumen
     ui.tablaBody.innerHTML = '';
     ui.btnPDF.disabled = true;
+    if (ui.btnCompartir) ui.btnCompartir.disabled = true;
 
     ui.resSubtotal.textContent = '—';
     ui.resIva.textContent = '—';
@@ -447,12 +534,8 @@ function render(res){
   ui.resTotalFin.textContent = fmtMXN(res.totalPagos);
 
   ui.tablaBody.innerHTML = '';
-  for (const r of res.rows){
+  for (const r of (res.rows || [])){
     const tr = document.createElement('tr');
-
-    // Si quieres resaltar el pago donde hubo abono, puedes aplicar estilo aquí:
-    // if (r.abonoExtraTotal > 0) tr.classList.add('row-abono');
-
     tr.innerHTML = `
       <td>${r.n}</td>
       <td>${formatDateHuman(r.fecha)}</td>
@@ -472,23 +555,18 @@ function render(res){
 
 /* ===== Limpiar ===== */
 function limpiar(){
-  // Sección 1
-  ui.cliente.value = '';
+  if (ui.cliente) ui.cliente.value = '';
   if (ui.producto) ui.producto.value = '';
-  ui.total.value = '';
-  ui.enganchePct.value = '';
-  ui.engancheMonto.value = '';
-  ui.tasaAnual.value = '';
-  ui.meses.value = '';
-  ui.ivaPct.value = String(IVA_RATE * 100);
-  // (ya no hay ui.ivaModo)
-  ui.diasPeriodo.value = String(DIAS_PERIODO);
+  if (ui.total) ui.total.value = '';
+  if (ui.enganchePct) ui.enganchePct.value = '';
+  if (ui.engancheMonto) ui.engancheMonto.value = '';
+  if (ui.tasaAnual) ui.tasaAnual.value = '';
+  if (ui.meses) ui.meses.value = '';
+  if (ui.ivaPct) ui.ivaPct.value = String(IVA_RATE * 100);
+  if (ui.diasPeriodo) ui.diasPeriodo.value = String(DIAS_PERIODO);
 
-
-  // Sección 2
   if (ui.abonoPago) ui.abonoPago.value = '';
   if (ui.abonoExtra) ui.abonoExtra.value = '';
-  if (ui.abonoEfecto) ui.abonoEfecto.value = 'recalcular';
 
   ui.tablaBody.innerHTML = '';
   ui.btnPDF.disabled = true;
@@ -500,6 +578,8 @@ function limpiar(){
   ui.resFinanciar.textContent = '—';
   ui.resMensualidad.textContent = '—';
   ui.resTotalFin.textContent = '—';
+
+  limpiarFirma();
 
   lastResult = null;
   baseResult = null;
@@ -519,22 +599,13 @@ async function loadImageAsDataURL(url){
 }
 
 async function generarPDF(opts = {}){
-  // opts:
-  // - openPreview: true/false (default true)
-  // - returnBlob: true/false (default false)
-  // - onePage: true/false (default false) -> (si lo usas) comprime tabla
-  const {
-    openPreview = true,
-    returnBlob = false,
-    onePage = false
-  } = opts;
-
+  const { openPreview = true, returnBlob = false } = opts;
   if (!lastResult) return null;
 
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'letter' });
 
-  // Logo (arriba derecha)
+  // Logo
   let logoDataUrl = null;
   try{ logoDataUrl = await loadImageAsDataURL('/assets/logo.jpg'); }catch(e){ logoDataUrl = null; }
 
@@ -554,6 +625,9 @@ async function generarPDF(opts = {}){
   const subtitulo = (lastResult.mode === 'abono') ? 'Simulación de Abono a Capital' : '';
   const cliente = lastResult.cliente || '—';
   const producto = lastResult.producto || '—';
+
+  // ===== D1) AQUÍ se captura la firma =====
+  const firmaUrl = getFirmaDataUrl(); // null si no firmaron
 
   const left = 40;
   let y = 48;
@@ -576,9 +650,9 @@ async function generarPDF(opts = {}){
 
   y += (subtitulo ? 56 : 42);
 
-  // --- Datos (tabla de “labels/values”) ---
+  // Detalle
   const labelX = left;
-  const valueX = left + 150;
+  const valueX = left + 160;
   const lineH = 14;
 
   const items = [
@@ -594,7 +668,7 @@ async function generarPDF(opts = {}){
   ];
 
   if (lastResult.mode === 'abono'){
-    items.splice(2, 0, {
+    items.splice(3, 0, {
       label: 'Abono:',
       value: `Pago #${lastResult.abonoPagoN} · +${fmtMXN(lastResult.abonoExtra)} (con IVA)`
     });
@@ -603,29 +677,30 @@ async function generarPDF(opts = {}){
   for (const it of items){
     doc.setFont('helvetica','bold');
     doc.text(it.label, labelX, y);
-
     doc.setFont('helvetica','normal');
     doc.text(String(it.value ?? '—'), valueX, y);
-
     y += lineH;
   }
 
   y += 10;
 
-  // --- Tabla corrida ---
+  // Tabla
   const head = [[
     '#','Fecha','Saldo inicial (sin IVA)','Abono capital','Interés','IVA','Pago','Saldo final'
   ]];
 
-  const rows = Array.isArray(lastResult.rows) ? lastResult.rows : [];
+  const rows = lastResult.rows || [];
 
-  // Totales (usamos lo ya calculado y mostrado)
-  const totalInteres = round2(rows.reduce((a,r) => a + (Number(r.interes)||0), 0));
-  const totalIVA     = round2(rows.reduce((a,r) => a + (Number(r.iva)||0), 0));
-  const totalPago    = round2(rows.reduce((a,r) => a + (Number(r.pago)||0), 0));
+  let sumInteres = 0;
+  let sumIva = 0;
+  let sumPago = 0;
+  for (const r of rows){
+    sumInteres = round2(sumInteres + (r.interes || 0));
+    sumIva = round2(sumIva + (r.iva || 0));
+    sumPago = round2(sumPago + (r.pago || 0));
+  }
 
-  // Body normal
-  let body = rows.map(r => ([
+  const body = rows.map(r => ([
     String(r.n),
     formatDateHuman(r.fecha),
     fmtMXN(r.saldoInicial),
@@ -636,41 +711,57 @@ async function generarPDF(opts = {}){
     fmtMXN(r.saldoFinal)
   ]));
 
-  // Si estabas usando “onePage” para comprimir, aquí podrías aplicar tu compresión.
-  // (No la activo automáticamente para no “resumir”.)
-  // if (onePage) body = compressRowsForPdf(body);
-
-  // Renglón de TOTALES al final (colocamos totales en Interés/IVA/Pago)
-  const totalsRow = [
+  // Totales al final
+  const foot = [[
     '', 'TOTALES', '', '',
-    fmtMXN(totalInteres),
-    fmtMXN(totalIVA),
-    fmtMXN(totalPago),
+    fmtMXN(sumInteres),
+    fmtMXN(sumIva),
+    fmtMXN(sumPago),
     ''
-  ];
-  body.push(totalsRow);
+  ]];
 
   doc.autoTable({
     startY: y,
     head,
     body,
+    foot,
+    showFoot: 'lastPage',
     styles: { font:'helvetica', fontSize: 8, cellPadding: 4 },
     headStyles: { fillColor: [20,20,20] },
+    footStyles: { fillColor: [245,245,245], textColor: 20, fontStyle: 'bold' },
     theme: 'grid',
-    margin: { left, right: 40, bottom: 90 }, // reserva para firma + legal
-
-    // Estilo especial para la última fila (totales)
-    didParseCell: function(data){
-      const isTotals = (data.section === 'body' && data.row.index === body.length - 1);
-      if (isTotals){
-        data.cell.styles.fontStyle = 'bold';
-        // opcional: alineación a la derecha en totales numéricos
-        if ([4,5,6].includes(data.column.index)) data.cell.styles.halign = 'right';
-      }
-    }
+    margin: { left, right: 40, bottom: 140 } // reserva para firma + legal
   });
 
-  // ===== Firma + Legal en la última página =====
+  // ===== D2) Función que dibuja la firma =====
+  function drawFirmaPDF(yTop){
+    const lineW = 260;
+    const x1 = (pageWidth - lineW) / 2;
+    const x2 = x1 + lineW;
+
+    doc.setFont('helvetica','normal');
+    doc.setFontSize(9);
+    doc.text('Firma del Cliente', pageWidth/2, yTop, { align:'center' });
+
+    const imgH = 44;
+    const imgY = yTop + 10;
+
+    if (firmaUrl){
+      try{
+        doc.addImage(firmaUrl, 'PNG', x1, imgY, lineW, imgH);
+      }catch(e){}
+    }
+
+    const yLine = imgY + imgH + 6;
+    doc.line(x1, yLine, x2, yLine);
+
+    doc.setFontSize(9);
+    doc.text(cliente, pageWidth/2, yLine + 14, { align:'center' });
+
+    return (yLine + 26) - yTop;
+  }
+
+  // Legal (para última página)
   const legalTxt =
     'LEGAL: Esta cotización es únicamente para fines informativos y de simulación. ' +
     'La tasa de interés es fija y el cálculo considera IVA sobre capital e interés. ' +
@@ -678,80 +769,44 @@ async function generarPDF(opts = {}){
     'La presente no constituye contrato, autorización ni compromiso de otorgar financiamiento. ' +
     'La operación queda sujeta a validación, aprobación y condiciones comerciales de MEGUESA S.A. de C.V.';
 
-  // Nos movemos a la última página (por si la tabla generó varias)
-  let totalPages = doc.getNumberOfPages();
+  // ===== D3 + D4) Colocar firma arriba del LEGAL, y si no cabe, crear página =====
+  const totalPages = doc.getNumberOfPages();
   doc.setPage(totalPages);
 
-  // Si la tabla terminó muy abajo en la última página, mandamos firma+legal a una nueva página
-  // (doc.lastAutoTable.finalY aplica a la página donde terminó la tabla)
-  const lastTableY = doc.lastAutoTable?.finalY ?? 0;
-
-  // Preparamos cálculo de altura del legal (para colocarlo bien)
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
+
   const legalLines = doc.splitTextToSize(legalTxt, pageWidth - left - 40);
-  const legalLineH = 10; // aprox para font 8
-  const legalHeight = legalLines.length * legalLineH;
+  const legalLineH = 10;
+  const legalH = legalLines.length * legalLineH;
 
-  // Legal irá “pegado” abajo pero sin salirse
-  const bottomPad = 24;
-  const legalStartY = pageH - bottomPad - legalHeight;
+  const bottomPadding = 18;
+  const legalTopY = pageH - bottomPadding - legalH;
 
-  // Firma arriba del legal
-  const sigBlockH = 55; // espacio firma (línea + nombre)
-  const sigY = legalStartY - sigBlockH;
+  const sigBlockH = 95; // “aprox”
+  let sigY = legalTopY - 12 - sigBlockH;
 
-  // ¿Cabe en la página donde terminó la tabla?
-  // si no cabe, agregamos nueva página y recalculamos posiciones
-  if (sigY < lastTableY + 25){
+  const lastTableY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY : 0;
+
+  // si no cabe arriba de la tabla, agregamos página
+  if (sigY < (lastTableY + 16)){
     doc.addPage();
-    totalPages = doc.getNumberOfPages();
-    doc.setPage(totalPages);
+    const newTotal = doc.getNumberOfPages();
+    doc.setPage(newTotal);
 
-    // recalcular en página nueva
-    const legalStartY2 = pageH - bottomPad - legalHeight;
-    const sigY2 = legalStartY2 - sigBlockH;
-
-    // Firma (centrada)
-    const lineW = 260;
-    const x1 = (pageWidth - lineW) / 2;
-    const x2 = x1 + lineW;
-
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(9);
-    doc.text('Firma del Cliente', pageWidth/2, sigY2, { align:'center' });
-
-    doc.line(x1, sigY2 + 18, x2, sigY2 + 18);
-
-    doc.setFontSize(9);
-    doc.text(cliente, pageWidth/2, sigY2 + 34, { align:'center' });
-
-    // Legal
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(8);
-    doc.text(legalLines, left, legalStartY2);
-  } else {
-    // Firma en la misma última página
-    const lineW = 260;
-    const x1 = (pageWidth - lineW) / 2;
-    const x2 = x1 + lineW;
-
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(9);
-    doc.text('Firma del Cliente', pageWidth/2, sigY, { align:'center' });
-
-    doc.line(x1, sigY + 18, x2, sigY + 18);
-
-    doc.setFontSize(9);
-    doc.text(cliente, pageWidth/2, sigY + 34, { align:'center' });
-
-    // Legal
-    doc.setFont('helvetica','normal');
-    doc.setFontSize(8);
-    doc.text(legalLines, left, legalStartY);
+    // recalcular posiciones en nueva página (legal queda igual abajo)
+    sigY = legalTopY - 12 - sigBlockH;
   }
 
-  // Nombre de archivo
+  // Dibuja firma
+  drawFirmaPDF(sigY);
+
+  // Dibuja legal abajo
+  doc.setFont('helvetica','normal');
+  doc.setFontSize(8);
+  doc.text(legalLines, left, legalTopY);
+
+  // Nombre archivo
   const safeCliente = (cliente || 'cliente')
     .replace(/[^\w\- ]+/g,'')
     .trim()
@@ -759,7 +814,6 @@ async function generarPDF(opts = {}){
 
   const fname = `Cotizacion_${safeCliente}_${new Date().toISOString().slice(0,10)}.pdf`;
 
-  // Salida: blob
   const pdfBlob = doc.output('blob');
 
   if (returnBlob){
@@ -776,72 +830,28 @@ async function generarPDF(opts = {}){
   return null;
 }
 
-/* ===== Compartir / Impresión ===== */
-
-// Escapa texto para HTML (para modo impresión)
-function escHtml(s){
-  return String(s ?? '')
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#039;');
-}
-
-// Comprime filas para que quepa “1 hoja” (si la corrida es larga)
-function compressRows(rows, maxRows = 18){
-  if (!Array.isArray(rows)) return [];
-  if (rows.length <= maxRows) return rows;
-
-  const headCount = Math.floor((maxRows - 1) / 2);
-  const tailCount = maxRows - 1 - headCount;
-
-  const head = rows.slice(0, headCount);
-  const tail = rows.slice(-tailCount);
-
-  return [...head, { _ellipsis: true }, ...tail];
-}
-
-// Texto base para WhatsApp/Email (cotización)
+/* ===== Compartir ===== */
 function buildShareText(res){
-  const ivaModoTxt = (res.ivaModo === 'interes')
-    ? 'IVA sobre interés'
-    : 'IVA sobre (capital + interés)';
-
   const cliente = res.cliente || '—';
-  const producto = res.producto || res.productos || res.prod || ''; // por si tu campo se llama distinto
-
+  const producto = res.producto || '';
   const lines = [];
+
   lines.push('COTIZACIÓN · VENTA CON FINANCIAMIENTO');
   if (producto) lines.push(`Producto: ${producto}`);
   lines.push(`Cliente: ${cliente}`);
-  lines.push(`Monto total (con IVA): ${fmtMXN(res.total)}`);
-  if (res.engancheIncl != null) lines.push(`Enganche: ${fmtMXN(res.engancheIncl)} (${fmtPct((res.enganchePctReal || 0) * 100)})`);
+  lines.push(`Pago Inicial: ${fmtMXN(res.engancheIncl ?? 0)}`);
   lines.push(`Monto a financiar (con IVA): ${fmtMXN(res.financiarIncl)}`);
   lines.push(`Plazo: ${res.meses} meses`);
   lines.push(`Tasa anual: ${fmtPct((res.tasaAnual || 0) * 100)} · Días/periodo: ${res.diasPeriodo || 30} (base 360)`);
-  lines.push(`IVA: ${fmtPct((res.ivaRate || 0.16) * 100)} · Modo: ${ivaModoTxt}`);
   lines.push(`Mensualidad aprox.: ${fmtMXN(res.mensualidad)}`);
-  lines.push(`Monto final financiado: ${fmtMXN(res.totalPagos)}`);
+  lines.push(`Total (suma de pagos): ${fmtMXN(res.totalPagos)}`);
 
-  // Si tienes leyenda legal en tu PDF/cotización, puedes incluir una línea corta aquí:
-  // lines.push('Nota: Cotización sujeta a validación y condiciones comerciales.');
+  if (res.mode === 'abono'){
+    lines.push(`Simulación abono: Pago #${res.abonoPagoN} +${fmtMXN(res.abonoExtra)} (con IVA)`);
+    lines.push(`Nueva mensualidad: ${fmtMXN(res.mensualidad)}`);
+  }
 
   return lines.join('\n');
-}
-
-// Intenta generar un PDF “1 hoja” SIN abrir pestaña: reusa tu generarPDF existente si soporta returnBlob.
-// Si tu generarPDF actual NO devuelve blob, este wrapper lo obtiene clonando el doc: te digo abajo cómo adaptarlo.
-async function generarPDFParaCompartir(){
-  // Caso 1: tu generarPDF ya soporta { openPreview:false, returnBlob:true, onePage:true }
-  // Si no, va a lanzar error y cae al catch.
-  try{
-    const out = await generarPDF({ openPreview:false, returnBlob:true });
-    if (out && out.blob) return out;
-  }catch(e){
-    // seguimos al fallback (sin PDF adjunto)
-  }
-  return null;
 }
 
 async function compartirCotizacion(){
@@ -852,34 +862,31 @@ async function compartirCotizacion(){
 
   const texto = buildShareText(lastResult);
 
-  // Intentar adjuntar PDF (si el navegador lo permite)
-  const pdfOut = await generarPDFParaCompartir();
+  // intentamos adjuntar PDF
+  let pdfOut = null;
+  try{
+    pdfOut = await generarPDF({ openPreview:false, returnBlob:true });
+  }catch(e){ pdfOut = null; }
+
   if (pdfOut && pdfOut.blob){
     const file = new File([pdfOut.blob], pdfOut.filename || 'Cotizacion.pdf', { type:'application/pdf' });
 
-    // Web Share API con archivos
     if (navigator.share && navigator.canShare && navigator.canShare({ files: [file] })){
       try{
         await navigator.share({ title:'Cotización', text: texto, files: [file] });
         return;
-      }catch(e){
-        // si cancelan o falla, seguimos al siguiente método
-      }
+      }catch(e){}
     }
   }
 
-  // Web Share API (solo texto)
+  // share sin archivo
   if (navigator.share){
     try{
       await navigator.share({ title:'Cotización', text: texto });
       return;
-    }catch(e){
-      // si cancelan, no hacemos nada más
-      return;
-    }
+    }catch(e){ return; }
   }
 
-  // Fallback: WhatsApp o Email
   const usarWhatsApp = confirm('Tu navegador no soporta “Compartir”.\n\nOK = WhatsApp\nCancelar = Email');
   if (usarWhatsApp){
     const wa = `https://wa.me/?text=${encodeURIComponent(texto)}`;
@@ -890,7 +897,6 @@ async function compartirCotizacion(){
     window.location.href = `mailto:?subject=${subject}&body=${body}`;
   }
 }
-
 
 /* ===== PWA ===== */
 if ('serviceWorker' in navigator){
