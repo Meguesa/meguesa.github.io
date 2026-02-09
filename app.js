@@ -392,41 +392,39 @@ function simularAbonoCapital(){
   if (!(extraTotal > 0)) errs.push('Captura un abono adicional mayor a 0.');
   if (errs.length){ alert(errs.join('\n')); return; }
 
-  // Abono extra capturado como “con IVA” -> convertir a “sin IVA” para capital
+  // Abono capturado "con IVA" -> convertir a base "sin IVA" para capital
   const extraCapitalSub = round2(extraTotal / (1 + baseResult.ivaRate));
 
   const rate = baseResult.rate;
-  const pagoSubBase = baseResult.pagoSub;           // ✅ mantenemos el mismo pago base (sin IVA)
-  const mensualidadBase = baseResult.mensualidad;   // ✅ mantenemos la mensualidad (con IVA) “normal”
+  const pagoSubBase = baseResult.pagoSub;           // ✅ MISMO pago sub (sin IVA) => misma mensualidad
+  const mensualidadBase = baseResult.mensualidad;   // ✅ MISMA mensualidad (con IVA)
 
   let saldo = baseResult.financiarSub;
   const rows = [];
-  let totalPagosC = 0; // ✅ centavos
+  let totalPagosC = 0; // centavos (suma exacta)
 
-  function pushRow(n, pagoSub, extraCapSub){
+  function pushRow(n, extraCapSub, forceClose){
     const fecha = addMonths(baseResult.primerPago, n - 1);
 
-    let interes = round2(saldo * rate);
+    const interes = round2(saldo * rate);
 
-    // capital normal + abono extra (si aplica)
-    let capital = round2(pagoSub - interes + (extraCapSub || 0));
+    // Capital del pago normal + abono extra (si aplica)
+    let capital = round2((pagoSubBase - interes) + (extraCapSub || 0));
 
-    // no puede pagar más capital que el saldo
-    if (capital >= saldo){
-      capital = round2(saldo);
-    }
+    // No puede abonar más capital que el saldo
+    if (capital >= saldo) capital = round2(saldo);
 
     let saldoFinal = round2(saldo - capital);
 
-    // cierre por residuos muy pequeños
-    if (saldoFinal > 0 && saldoFinal < 0.01){
+    // Si es el último mes permitido y queda residuo por redondeo, lo absorbemos para cerrar
+    if (forceClose && saldoFinal !== 0){
       capital = round2(capital + saldoFinal);
       saldoFinal = 0;
     }
 
     const baseIVA = (capital + interes);
     const ivaPago = round2(baseIVA * baseResult.ivaRate);
-    const pagoTotal = round2(capital + interes + ivaPago);
+    const pagoTotal = round2(baseIVA + ivaPago);
 
     rows.push({
       n, fecha,
@@ -437,41 +435,26 @@ function simularAbonoCapital(){
       abonoExtraTotal: (n === pagoN) ? extraTotal : 0
     });
 
-    totalPagosC += toCents(pagoTotal); // ✅ suma exacta
+    totalPagosC += toCents(pagoTotal);
     saldo = saldoFinal;
   }
 
-  // 1) Construimos del pago 1 al pagoN (aplicando abono en pagoN)
-  for (let n = 1; n <= pagoN; n++){
+  // Recorremos como máximo hasta el plazo original (mesesBase).
+  // Si el saldo llega a 0 antes, se corta plazo (✅ objetivo).
+  for (let n = 1; n <= mesesBase; n++){
     const extraThis = (n === pagoN) ? extraCapitalSub : 0;
-    pushRow(n, pagoSubBase, extraThis);
-    if (saldo <= 0) break; // liquidación anticipada
-  }
-
-  // 2) Continuamos con la MISMA mensualidad (mismo pagoSubBase) hasta liquidar
-  //    (disminuye el plazo)
-  if (saldo > 0){
-    const MAX_MESES = 600; // seguridad
-    for (let n = pagoN + 1; n <= MAX_MESES; n++){
-      pushRow(n, pagoSubBase, 0);
-      if (saldo <= 0) break;
-    }
+    const forceClose = (n === mesesBase);
+    pushRow(n, extraThis, forceClose);
+    if (saldo <= 0) break; // ✅ se acorta plazo
   }
 
   lastResult = {
     ...baseResult,
     mode: 'abono',
-
-    // plazo resultante:
-    meses: rows.length,
+    meses: rows.length,                 // ✅ plazo resultante (menor o igual)
     rows,
-
-    // total exacto:
-    totalPagos: fromCents(totalPagosC),
-
-    // mensualidad se mantiene (salvo último pago que puede ser menor)
-    mensualidad: mensualidadBase,
-
+    totalPagos: fromCents(totalPagosC), // ✅ suma exacta
+    mensualidad: mensualidadBase,       // ✅ se mantiene
     abonoPagoN: pagoN,
     abonoExtra: extraTotal
   };
@@ -484,6 +467,7 @@ function simularAbonoCapital(){
     ui.panelPagos.hidden = false;
   }
 }
+
 
 function limpiarAbono(){
   if (ui.abonoPago) ui.abonoPago.value = '';
@@ -515,10 +499,11 @@ function render(res){
 
   if (res.mode === 'abono'){
     ui.resEnganche.textContent =
-      `Abono en pago #${res.abonoPagoN}: +${fmtMXN(res.abonoExtra)} · Plazo resultante: ${res.meses} meses · Mensualidad: ${fmtMXN(res.mensualidad)}`;
-  } else {
-    ui.resEnganche.textContent = `${fmtMXN(res.engancheIncl)} (${fmtPct(res.enganchePctReal*100)})`;
-  }
+      `Abono en pago #${res.abonoPagoN}: +${fmtMXN(res.abonoExtra)} · Mensualidad: ${fmtMXN(res.mensualidad)} · Plazo resultante: ${res.meses} meses`;
+} else {
+  ui.resEnganche.textContent = `${fmtMXN(res.engancheIncl)} (${fmtPct(res.enganchePctReal*100)})`;
+}
+
 
   ui.resFinanciar.textContent = fmtMXN(res.financiarIncl);
   ui.resMensualidad.textContent = fmtMXN(res.mensualidad);
@@ -850,8 +835,8 @@ function buildShareText(res){
   lines.push(`Total (suma de pagos): ${fmtMXN(res.totalPagos)}`);
 
   if (res.mode === 'abono'){
-    lines.push(`Simulación abono: Pago #${res.abonoPagoN} +${fmtMXN(res.abonoExtra)} (con IVA)`);
-    lines.push(`Efecto: Mantener mensualidad y disminuir plazo (plazo resultante: ${res.meses} meses)`);
+    lines.push(`Efecto: Mantener mensualidad y disminuir plazo`);
+    lines.push(`Plazo resultante: ${res.meses} meses`);
   }
 
   return lines.join('\n');
