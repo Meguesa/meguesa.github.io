@@ -376,7 +376,7 @@ function calcular(){
   render(lastResult);
 }
 
-/* ===== Sección 2: Abono a capital (solo mantener plazo y recalcular mensualidad) ===== */
+/* ===== Sección 2: Abono a capital (✅ disminuir plazo y mantener mensualidad) ===== */
 function simularAbonoCapital(){
   if (!baseResult){
     alert('Primero calcula una corrida en la sección "Datos".');
@@ -396,23 +396,30 @@ function simularAbonoCapital(){
   const extraCapitalSub = round2(extraTotal / (1 + baseResult.ivaRate));
 
   const rate = baseResult.rate;
-  const pagoSubBase = baseResult.pagoSub;
+  const pagoSubBase = baseResult.pagoSub;           // ✅ mantenemos el mismo pago base (sin IVA)
+  const mensualidadBase = baseResult.mensualidad;   // ✅ mantenemos la mensualidad (con IVA) “normal”
 
   let saldo = baseResult.financiarSub;
   const rows = [];
   let totalPagosC = 0; // ✅ centavos
 
-  function pushRow(n, pagoSub, extraCapSub, forceClose){
+  function pushRow(n, pagoSub, extraCapSub){
     const fecha = addMonths(baseResult.primerPago, n - 1);
 
     let interes = round2(saldo * rate);
+
+    // capital normal + abono extra (si aplica)
     let capital = round2(pagoSub - interes + (extraCapSub || 0));
 
-    if (capital >= saldo) capital = round2(saldo);
+    // no puede pagar más capital que el saldo
+    if (capital >= saldo){
+      capital = round2(saldo);
+    }
 
     let saldoFinal = round2(saldo - capital);
 
-    if (forceClose && saldoFinal !== 0){
+    // cierre por residuos muy pequeños
+    if (saldoFinal > 0 && saldoFinal < 0.01){
       capital = round2(capital + saldoFinal);
       saldoFinal = 0;
     }
@@ -434,68 +441,37 @@ function simularAbonoCapital(){
     saldo = saldoFinal;
   }
 
-  // 1) De pago 1 a pagoN (aplicando el abono en pagoN)
+  // 1) Construimos del pago 1 al pagoN (aplicando abono en pagoN)
   for (let n = 1; n <= pagoN; n++){
     const extraThis = (n === pagoN) ? extraCapitalSub : 0;
-    const forceClose = (n === mesesBase);
-    pushRow(n, pagoSubBase, extraThis, forceClose);
-    if (saldo <= 0) break;
+    pushRow(n, pagoSubBase, extraThis);
+    if (saldo <= 0) break; // liquidación anticipada
   }
 
-  if (saldo <= 0){
-    lastResult = {
-      ...baseResult,
-      mode: 'abono',
-      meses: rows.length,
-      rows,
-      totalPagos: fromCents(totalPagosC),
-      mensualidad: baseResult.mensualidad,
-      abonoPagoN: pagoN,
-      abonoExtra: extraTotal
-    };
-    render(lastResult);
-    return;
+  // 2) Continuamos con la MISMA mensualidad (mismo pagoSubBase) hasta liquidar
+  //    (disminuye el plazo)
+  if (saldo > 0){
+    const MAX_MESES = 600; // seguridad
+    for (let n = pagoN + 1; n <= MAX_MESES; n++){
+      pushRow(n, pagoSubBase, 0);
+      if (saldo <= 0) break;
+    }
   }
-
-  // 2) Mantener plazo y recalcular mensualidad desde el siguiente pago
-  const remainingPeriods = mesesBase - pagoN;
-  if (remainingPeriods <= 0){
-    lastResult = {
-      ...baseResult,
-      mode: 'abono',
-      meses: rows.length,
-      rows,
-      totalPagos: fromCents(totalPagosC),
-      mensualidad: baseResult.mensualidad,
-      abonoPagoN: pagoN,
-      abonoExtra: extraTotal
-    };
-    render(lastResult);
-    return;
-  }
-
-  let pagoSubNuevo = pmt(rate, remainingPeriods, saldo);
-  pagoSubNuevo = round2(pagoSubNuevo);
-
-  for (let j = 1; j <= remainingPeriods; j++){
-    const n = pagoN + j;
-    const forceClose = (n === mesesBase);
-    pushRow(n, pagoSubNuevo, 0, forceClose);
-    if (saldo <= 0) break;
-  }
-
-  const idxNext = pagoN; // pagoN+1 en índice 0-based
-  const mensualidadNueva = rows[idxNext] ? rows[idxNext].pago : baseResult.mensualidad;
 
   lastResult = {
     ...baseResult,
     mode: 'abono',
+
+    // plazo resultante:
     meses: rows.length,
     rows,
+
+    // total exacto:
     totalPagos: fromCents(totalPagosC),
-    pagoSubNuevo,
-    mensualidad: mensualidadNueva,
-    mensualidadAnterior: baseResult.mensualidad,
+
+    // mensualidad se mantiene (salvo último pago que puede ser menor)
+    mensualidad: mensualidadBase,
+
     abonoPagoN: pagoN,
     abonoExtra: extraTotal
   };
@@ -539,7 +515,7 @@ function render(res){
 
   if (res.mode === 'abono'){
     ui.resEnganche.textContent =
-      `Abono en pago #${res.abonoPagoN}: +${fmtMXN(res.abonoExtra)} · Nueva mensualidad: ${fmtMXN(res.mensualidad)}`;
+      `Abono en pago #${res.abonoPagoN}: +${fmtMXN(res.abonoExtra)} · Plazo resultante: ${res.meses} meses · Mensualidad: ${fmtMXN(res.mensualidad)}`;
   } else {
     ui.resEnganche.textContent = `${fmtMXN(res.engancheIncl)} (${fmtPct(res.enganchePctReal*100)})`;
   }
@@ -687,10 +663,11 @@ async function generarPDF(opts = {}){
   ];
 
   if (lastResult.mode === 'abono'){
-    items.splice(3, 0, {
-      label: 'Abono:',
-      value: `Pago #${lastResult.abonoPagoN} · +${fmtMXN(lastResult.abonoExtra)} (con IVA)`
-    });
+    // Abono + plazo resultante
+    items.splice(3, 0,
+      { label: 'Abono:', value: `Pago #${lastResult.abonoPagoN} · +${fmtMXN(lastResult.abonoExtra)} (con IVA)` },
+      { label: 'Plazo resultante:', value: `${lastResult.meses} pagos` }
+    );
   }
 
   for (const it of items){
@@ -710,7 +687,7 @@ async function generarPDF(opts = {}){
 
   const rows = lastResult.rows || [];
 
-  // ✅ Totales exactos (centavos), sin round2 acumulado
+  // ✅ Totales exactos (centavos)
   let sumInteresC = 0;
   let sumIvaC = 0;
   let sumPagoC = 0;
@@ -734,7 +711,6 @@ async function generarPDF(opts = {}){
     fmtMXN(r.saldoFinal)
   ]));
 
-  // Totales al final
   const foot = [[
     '', 'TOTALES', '', '',
     fmtMXN(sumInteres),
@@ -777,12 +753,11 @@ async function generarPDF(opts = {}){
           const drawW = firmaSize.w * scale;
           const drawH = firmaSize.h * scale;
 
-          const drawX = (pageWidth / 2) - (drawW / 2);   // centrado
-          const drawY = imgY + (boxH - drawH) / 2;       // centrado vertical
+          const drawX = (pageWidth / 2) - (drawW / 2);
+          const drawY = imgY + (boxH - drawH) / 2;
 
           doc.addImage(firmaUrl, 'PNG', drawX, drawY, drawW, drawH);
         } else {
-          // fallback si no se pudo medir
           doc.addImage(firmaUrl, 'PNG', x1, imgY, boxW, boxH);
         }
       }catch(e){}
@@ -823,22 +798,18 @@ async function generarPDF(opts = {}){
 
   const lastTableY = (doc.lastAutoTable && doc.lastAutoTable.finalY) ? doc.lastAutoTable.finalY : 0;
 
-  // si no cabe arriba de la tabla, agregamos página
   if (sigY < (lastTableY + 16)){
     doc.addPage();
     const newTotal = doc.getNumberOfPages();
     doc.setPage(newTotal);
-    // recalcular sigY para nueva página (legal queda igual abajo)
     sigY = legalTopY - 12 - sigBlockH;
   }
 
-  // Dibuja firma y legal
   drawFirmaPDF(sigY);
   doc.setFont('helvetica','normal');
   doc.setFontSize(8);
   doc.text(legalLines, left, legalTopY);
 
-  // Nombre archivo
   const safeCliente = (cliente || 'cliente')
     .replace(/[^\w\- ]+/g,'')
     .trim()
@@ -880,7 +851,7 @@ function buildShareText(res){
 
   if (res.mode === 'abono'){
     lines.push(`Simulación abono: Pago #${res.abonoPagoN} +${fmtMXN(res.abonoExtra)} (con IVA)`);
-    lines.push(`Nueva mensualidad: ${fmtMXN(res.mensualidad)}`);
+    lines.push(`Efecto: Mantener mensualidad y disminuir plazo (plazo resultante: ${res.meses} meses)`);
   }
 
   return lines.join('\n');
